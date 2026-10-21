@@ -5,7 +5,8 @@ import { slug } from "../src/core/parser.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
 import { applyConversion, draftToScript } from "../src/core/convert.ts";
-import { fromLayer, toLayer, type Layer, type LayerView } from "../src/core/layers.ts";
+import { draftBlocks, draftByRules, fromLayer, replaceDrafts, toLayer, type Layer, type LayerView } from "../src/core/layers.ts";
+import { claudeConvert, explainFailure, loadApiKey, saveApiKey } from "./claude.ts";
 import { parseScript } from "../src/core/parser.ts";
 import { BookView, PreviewNodes } from "./Preview.tsx";
 import { SheetForm, isStub } from "./SheetForm.tsx";
@@ -51,6 +52,9 @@ export function App() {
   // Seamless layer tabs: the file seen as Draft, Play (the source) or Ren'Py.
   const [layer, setLayer] = useState<Layer>("play");
   const [view, setView] = useState<{ key: string; v: LayerView; text: string } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [undo, setUndo] = useState<{ file: string; text: string } | null>(null);
+  const [apiKey, setApiKey] = useState(loadApiKey);
   const [converting, setConverting] = useState<{ line: number; prose: string; script: string; checks: string[] } | null>(null);
 
   const theme = activeTheme(prefs);
@@ -88,16 +92,48 @@ export function App() {
   const editLayer = (text: string) => {
     if (!activeView || !ok) return;
     setView({ ...activeView, text });
-    update(fromLayer(activeView.v, text, ok.config, ok.sheets.map((x) => x.sheet)));
+    update(fromLayer(activeView.v, text, ok.config));
   };
-  const switchLayer = (l: Layer) => {
+  // Leaving Draft converts every draft passage in the file at once: with
+  // Claude when the writer added a key, with the rules otherwise.
+  const switchLayer = async (l: Layer) => {
+    if (busy) return;
+    const src = project.files[file] ?? "";
+    const blocks = l !== "draft" && ok && file.endsWith(".intent") ? draftBlocks(src) : [];
+    if (ok && blocks.length) {
+      const sheets = ok.sheets.map((x) => x.sheet);
+      const n = blocks.length;
+      const what = `${n} draft passage${n > 1 ? "s" : ""}`;
+      let scripts: string[] | null = null;
+      let note = `Converted ${what} with the rules.`;
+      if (apiKey) {
+        setBusy(`Claude is converting ${what}…`);
+        try {
+          const before = src.split("\n").slice(0, blocks[0].open).join("\n");
+          scripts = await claudeConvert(apiKey, blocks.map((b) => b.prose), ok.config, sheets, before);
+          note = `Claude converted ${what}.`;
+        } catch (e) {
+          note = `Claude couldn't convert (${explainFailure(e)}), so the rules did.`;
+        }
+        setBusy(null);
+      }
+      scripts ??= blocks.map((b) => draftByRules(b.prose, ok.config, sheets));
+      update(replaceDrafts(src, scripts));
+      for (const g of scripts.flatMap(detectMinigames)) {
+        const f = sheetFileName("minigame", g);
+        if (project.files[f] === undefined) setFile(f, newSheet("minigame", g, `First written about in ${file}.`));
+      }
+      setUndo({ file, text: src });
+      say(note, 8000);
+    }
     setView(null);
     setLayer(l);
   };
 
-  const say = (msg: string) => {
+  const say = (msg: string, ms = 2500) => {
     setToast(msg);
-    setTimeout(() => setToast(""), 2500);
+    setTimeout(() => setToast((t) => (t === msg ? "" : t)), ms);
+    if (ms <= 2500) setUndo(null);
   };
 
   const setFile = (name: string, text: string) =>
@@ -407,7 +443,7 @@ export function App() {
               ))}
             </div>
             {layer !== "play" ? (
-              <span className="label">{layer === "draft" ? "Write as prose. Untouched lines keep their script; edited ones are converted." : "Edit the code. Lines Intent can't read stay as Ren'Py blocks."}</span>
+              <span className="label">{layer === "draft" ? "Write as prose. Change tab to turn every new or edited passage into script." : "Edit the code. Lines Intent can't read stay as Ren'Py blocks."}</span>
             ) : draftAtCursor ? (
               <button className="convert" onClick={startConvert} data-testid="convert">Convert draft to script</button>
             ) : (
@@ -588,8 +624,16 @@ export function App() {
           </div>
         </div>
       )}
-      {settingsOpen && <Settings prefs={prefs} setPrefs={setPrefs} theme={theme} onClose={() => setSettingsOpen(false)} />}
-      {toast && <div className="toast" role="status">{toast}</div>}
+      {settingsOpen && <Settings prefs={prefs} setPrefs={setPrefs} theme={theme} apiKey={apiKey} setApiKey={(k) => { saveApiKey(k); setApiKey(k.trim()); }} onClose={() => setSettingsOpen(false)} />}
+      {busy && <div className="busy" role="status"><span className="spinner" />{busy}</div>}
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+          {undo && undo.file === file && (
+            <button className="link" onClick={() => { update(undo.text); setUndo(null); setToast(""); setView(null); setLayer("draft"); }}>Undo</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -626,7 +670,8 @@ function MvView({ json }: { json: string }) {
   );
 }
 
-function Settings({ prefs, setPrefs, theme, onClose }: { prefs: UiPrefs; setPrefs: (p: UiPrefs) => void; theme: Theme; onClose: () => void }) {
+function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, onClose }: { prefs: UiPrefs; setPrefs: (p: UiPrefs) => void; theme: Theme; apiKey: string; setApiKey: (k: string) => void; onClose: () => void }) {
+  const [keyDraft, setKeyDraft] = useState("");
   const custom: Theme = prefs.custom ?? { ...structuredClone(theme), id: "custom", label: "Custom" };
   const setCustom = (t: Theme) => setPrefs({ ...prefs, custom: t, themeId: "custom" });
   return (
@@ -677,6 +722,24 @@ function Settings({ prefs, setPrefs, theme, onClose }: { prefs: UiPrefs; setPref
           </label>
           <label>Show outline<input type="checkbox" checked={prefs.showOutline} onChange={(e) => setPrefs({ ...prefs, showOutline: e.target.checked })} /></label>
           <label>Wrap long lines<input type="checkbox" checked={prefs.wrap} onChange={(e) => setPrefs({ ...prefs, wrap: e.target.checked })} /></label>
+        </div>
+        <h3>Claude</h3>
+        <div className="claude-key">
+          <p className="muted">
+            With your Anthropic API key, Claude converts drafts when you change tab. Without it, Intent uses its own rules. The key stays on this
+            device: it is never saved in your project or its exports. Get one at console.anthropic.com → API keys.
+          </p>
+          {apiKey ? (
+            <div className="row">
+              <span className="chip">Key added · ends in {apiKey.slice(-4)}</span>
+              <button onClick={() => setApiKey("")}>Remove key</button>
+            </div>
+          ) : (
+            <div className="row">
+              <input type="password" autoComplete="off" spellCheck={false} placeholder="sk-ant-…" value={keyDraft} onChange={(e) => setKeyDraft(e.target.value)} aria-label="Anthropic API key" />
+              <button className="primary" disabled={!keyDraft.trim()} onClick={() => { setApiKey(keyDraft); setKeyDraft(""); }}>Save key</button>
+            </div>
+          )}
         </div>
         <footer className="about">
           <img src={theme.brand.logo} alt={theme.brand.name} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromLayer, renpyToScript, toLayer } from "../src/core/layers.ts";
+import { draftBlocks, draftByRules, fromLayer, renpyToScript, replaceDrafts, toLayer } from "../src/core/layers.ts";
 import { example } from "./helpers.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,13 +18,29 @@ describe("layer tabs", () => {
     }
   });
 
-  it("shows dialogue as prose in Draft and converts only the edited line", () => {
+  it("keeps an edited line as draft prose until the tab changes, then converts it", () => {
     const v = toLayer("draft", src, script, r.config);
     expect(v.text).toContain("“Go back upstairs,” Free says.");
     const edited = v.text.replace("“Go back upstairs,” Free says.", "“Go back down,” Free says.");
     const back = fromLayer(v, edited, r.config);
-    expect(back).toContain("FREE: Go back down.");
-    expect(back.split("\n").length).toBe(src.split("\n").length);
+    expect(back).toContain("::: draft\n“Go back down,” Free says.\n:::");
+    const done = replaceDrafts(back, draftBlocks(back).map((b) => draftByRules(b.prose, r.config, r.sheets.map((x) => x.sheet))));
+    expect(done).toContain("FREE: Go back down.");
+    expect(done).not.toContain("::: draft");
+  });
+
+  it("shows draft passages as prose, without fences", () => {
+    const v = toLayer("draft", src, script, r.config);
+    expect(v.text).not.toContain("::: draft");
+    expect(v.text).toContain("Now an Investigation minigame gets triggered.");
+  });
+
+  it("joins new prose typed next to a passage into that passage", () => {
+    const v = toLayer("draft", src, script, r.config);
+    const edited = v.text.replace("Now an Investigation minigame gets triggered.", "Now an Investigation minigame gets triggered.\nTony sighs.");
+    const back = fromLayer(v, edited, r.config);
+    expect(draftBlocks(back).length).toBe(draftBlocks(src).length);
+    expect(draftBlocks(back).at(-1)!.prose).toContain("Juu doesn't look up.");
   });
 
   it("reads back edited Ren'Py and keeps what it can't read as code", () => {

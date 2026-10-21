@@ -94,7 +94,10 @@ export function toLayer(layer: Layer, source: string, script: Script, cfg: Proje
     const inside = nodesIn(nodes, c);
     let rendered: string;
     if (!c.text.trim()) rendered = c.text;
-    else if (layer === "draft") {
+    else if (layer === "draft" && isDraftFence(c.text)) {
+      // A draft passage reads as the prose it is, without its fence.
+      rendered = dedent(c.text.split("\n").slice(1, -1)).join("\n");
+    } else if (layer === "draft") {
       // Plain dialogue and narration read as prose; anything else stays as written.
       rendered = inside.length && inside.every((n) => n.n === "say") && c.start === c.end
         ? inside.map((n) => proseLine(n as Extract<Node, { n: "say" }>, cfg)).join("\n")
@@ -109,8 +112,57 @@ export function toLayer(layer: Layer, source: string, script: Script, cfg: Proje
   return { layer, text: parts.join("\n"), origins };
 }
 
+const isDraftFence = (text: string) => /^\s*:::\s*draft\s*$/.test(text.split("\n")[0]) && text.trim().endsWith(":::");
+
+function dedent(lines: string[]): string[] {
+  const base = Math.min(...lines.filter((l) => l.trim()).map(indentOf));
+  return lines.map((l) => l.slice(Math.min(indentOf(l), Number.isFinite(base) ? base : 0)));
+}
+
+export interface DraftBlock {
+  /** 0-based lines of the opening and closing fence. */
+  open: number;
+  close: number;
+  pad: string;
+  prose: string;
+}
+
+/** Every `::: draft` passage in a file, in order. */
+export function draftBlocks(source: string): DraftBlock[] {
+  const lines = source.replace(/\r\n?/g, "\n").split("\n");
+  const out: DraftBlock[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!/^:::\s*\S/.test(t)) continue;
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() !== ":::") j++;
+    if (/^:::\s*draft$/.test(t) && j < lines.length)
+      out.push({ open: i, close: j, pad: lines[i].slice(0, indentOf(lines[i])), prose: dedent(lines.slice(i + 1, j)).join("\n").trim() });
+    i = j;
+  }
+  return out;
+}
+
+/** Swap each draft passage for its script, one entry per draftBlocks() result. */
+export function replaceDrafts(source: string, scripts: string[]): string {
+  const lines = source.replace(/\r\n?/g, "\n").split("\n");
+  const blocks = draftBlocks(source);
+  for (let k = blocks.length - 1; k >= 0; k--) {
+    const b = blocks[k];
+    const script = (scripts[k] ?? "").split("\n").map((l) => (l ? b.pad + l : l));
+    lines.splice(b.open, b.close - b.open + 1, ...script);
+  }
+  return lines.join("\n");
+}
+
+/** The rule converter for one passage, with what it is unsure of as notes on top. */
+export function draftByRules(prose: string, cfg: ProjectConfig, sheets: Sheet[] = []): string {
+  const c = draftToScript(prose, cfg, [], sheets);
+  return [...c.checks.map((x) => `// check: ${x}`), ...c.script.split("\n").filter((x) => !x.startsWith("// tag:"))].join("\n");
+}
+
 /** Back to Play: untouched chunks verbatim, everything else converted. */
-export function fromLayer(view: LayerView, edited: string, cfg: ProjectConfig, sheets: Sheet[] = []): string {
+export function fromLayer(view: LayerView, edited: string, cfg: ProjectConfig): string {
   if (view.layer === "play") return edited;
   const pool = new Map([...view.origins].map(([k, v]) => [k, [...v]]));
   const sizes = [...new Set([...pool.keys()].map((k) => k.split("\n").length))].sort((a, b) => b - a);
@@ -119,7 +171,7 @@ export function fromLayer(view: LayerView, edited: string, cfg: ProjectConfig, s
   let buffer: string[] = [];
   const flush = () => {
     if (!buffer.length) return;
-    out.push(view.layer === "draft" ? draftLines(buffer, cfg, sheets) : renpyToScript(buffer.join("\n"), cfg));
+    out.push(view.layer === "draft" ? fence(buffer) : renpyToScript(buffer.join("\n"), cfg));
     buffer = [];
   };
   let i = 0;
@@ -140,17 +192,21 @@ export function fromLayer(view: LayerView, edited: string, cfg: ProjectConfig, s
     if (!matched) buffer.push(lines[i++]);
   }
   flush();
-  return out.join("\n");
+  // Neighbouring passages are one passage, so pronouns and places carry over.
+  return out.join("\n").replace(/\n:::\n(\s*\n)*::: draft\n/g, (m) => "\n" + "\n".repeat(Math.max(0, m.split("\n").length - 4)));
 }
 
-/** Each edited or new line is its own paragraph; tags the converter keeps as notes are dropped. */
-function draftLines(lines: string[], cfg: ProjectConfig, sheets: Sheet[]): string {
-  return lines
-    .map((l) => {
-      if (!l.trim()) return l;
-      return draftToScript(l, cfg, [], sheets).script.split("\n").filter((x) => !x.startsWith("// tag:")).join("\n");
-    })
-    .join("\n");
+/**
+ * Edited or new prose is kept as written in a ::: draft passage; the whole
+ * file is converted at once when the writer leaves the Draft tab.
+ */
+function fence(lines: string[]): string {
+  let a = 0;
+  let b = lines.length;
+  while (a < b && !lines[a].trim()) a++;
+  while (b > a && !lines[b - 1].trim()) b--;
+  if (a === b) return lines.join("\n");
+  return [...lines.slice(0, a), "::: draft", ...lines.slice(a, b), ":::", ...lines.slice(b)].join("\n");
 }
 
 function unRpy(s: string): string {

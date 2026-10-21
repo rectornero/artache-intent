@@ -125,6 +125,18 @@ A sheet is one plain-text file per Character, Place, Item or Minigame, kept in
 ```
 @character Tony
 
+## Layer tabs (0.3)
+
+Draft, Play and Ren'Py show the same file. Draft shows dialogue as prose and `::: draft`
+passages as plain text, without fences. New or edited prose stays as written in a
+`::: draft` passage while you're in Draft; leaving the tab converts every draft passage
+in the file at once, and the toast offers Undo. In a draft passage, one line is one
+paragraph.
+
+Conversion uses Claude when an Anthropic API key is added in Settings → Claude (the key
+stays on the device, never in the project), and the built-in rules otherwise or if
+Claude fails. Lines either converter is unsure of get a `// check:` note.
+
 ## Identity
 nicknames: the neighbour
 pronouns: he

@@ -1,6 +1,6 @@
 {
   "name": "artache-intent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Artache Intent: write a game script once, export it to Ren'Py and RPG Maker MV.",
   "type": "module",
@@ -30,6 +30,7 @@
     "vitest": "3.2"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.137.0",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/language": "^6.13.1",
     "@codemirror/lint": "^6.9.7",

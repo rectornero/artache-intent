@@ -17,8 +17,9 @@ const VERBS =
   "says|said|asks|asked|replies|replied|answers|answered|whispers|whispered|shouts|shouted|mutters|muttered|murmurs|murmured|calls|called|cries|cried|adds|added|snaps|snapped|sighs|sighed|laughs|laughed|tells|told|continues|continued|insists|insisted|agrees|agreed|nods|nodded|smiles|smiled|grins|grinned|admits|admitted|explains|explained|protests|protested|warns|warned|offers|offered|suggests|suggested|interrupts|interrupted|repeats|repeated|notes|noted|observes|observed|groans|groaned|hisses|hissed|breathes|breathed|jokes|joked|teases|teased|pleads|pleaded|begs|begged|demands|demanded|orders|ordered|announces|announced|declares|declared|confesses|confessed|wonders|wondered|mumbles|mumbled|stammers|stammered|yells|yelled|screams|screamed|barks|barked|growls|growled|chuckles|chuckled|giggles|giggled|sneers|sneered|scoffs|scoffed|retorts|retorted|counters|countered|concedes|conceded|objects|objected|begins|began|finishes|finished|whimpers|whimpered|sobs|sobbed|corrects|corrected|promises|promised|reminds|reminded|guesses|guessed|shrugs|shrugged";
 const PRONOUNS = "he|she|they|it";
 
+// One line is one paragraph: editors wrap prose, writers don't.
 function paragraphs(text: string): string[] {
-  return text.split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
+  return text.split("\n").map((p) => p.trim()).filter(Boolean);
 }
 
 /** Long narration is split at sentence ends, so one click never shows a wall of text. */

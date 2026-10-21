@@ -274,3 +274,13 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .toolbar .layer-tabs button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(10, 17, 40, .12); }
 .toolbar .label { overflow: hidden; text-overflow: ellipsis; }
 .view-draft .editor .cm-scroller { font-family: var(--font-preview); font-size: 1.05em; }
+
+/* Tab conversion: Claude at work, and the Undo that follows */
+.busy { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: var(--panel, var(--bg)); color: var(--text); border: 1px solid var(--border); padding: 8px 16px; border-radius: 999px; z-index: 21; box-shadow: 0 8px 24px -12px rgb(0 0 0 / .35); }
+.spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast { display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px); }
+.toast button.link { background: none; border: 0; color: inherit; font-weight: 700; text-decoration: underline; padding: 0; cursor: pointer; }
+.claude-key .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.claude-key input { flex: 1; min-width: 180px; }
+.claude-key p { margin: 0 0 8px; }
