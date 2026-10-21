@@ -5,7 +5,7 @@ import { EditorView, highlightActiveLine, keymap, lineNumbers } from "@codemirro
 import { json } from "./jsonMode.ts";
 import { useEffect, useRef } from "react";
 import type { Diagnostic } from "../src/core/ast.ts";
-import { intentLanguage, intentLinter } from "./intentMode.ts";
+import { intentLanguage, intentLinter, layerStripes } from "./intentMode.ts";
 
 interface Props {
   docKey: string;
@@ -37,7 +37,7 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
           history(),
           highlightActiveLine(),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-          isJson ? json() : [intentLanguage(), intentLinter(() => diags.current)],
+          isJson ? json() : [intentLanguage(), layerStripes(), intentLinter(() => diags.current)],
           wrapComp.current.of(wrap ? EditorView.lineWrapping : []),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) cb.current.onChange(u.state.doc.toString());
@@ -54,6 +54,13 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
   useEffect(() => {
     view.current?.dispatch({ effects: wrapComp.current.reconfigure(wrap ? EditorView.lineWrapping : []) });
   }, [wrap]);
+
+  // Changes made outside the editor (convert, insert block) replace the text in place.
+  useEffect(() => {
+    const v = view.current;
+    if (!v || v.state.doc.toString() === value) return;
+    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value } });
+  }, [value]);
 
   useEffect(() => {
     if (view.current && !isJson) forceLinting(view.current);

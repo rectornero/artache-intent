@@ -175,3 +175,40 @@ pre.code.wrap { white-space: pre-wrap; }
   .project-picker { margin-left: 4px; max-width: 46vw; }
   .status { display: none; }
 }
+
+/* Layer stripes in the editor margin: draft prose, engine code, kept originals. */
+.editor .cm-ilayer { box-shadow: inset 3px 0 0 var(--stripe); background: color-mix(in srgb, var(--stripe) 6%, transparent); }
+.editor .cm-ilayer-draft { --stripe: var(--speaker); font-family: var(--font-preview); }
+.editor .cm-ilayer-renpy, .editor .cm-ilayer-mv { --stripe: var(--block); }
+.editor .cm-ilayer-was-draft { --stripe: var(--border); color: var(--muted); }
+
+.toolbar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--panel); font-size: 13px; overflow-x: auto; }
+.toolbar .label { color: var(--muted); font-size: 12px; margin-right: 2px; white-space: nowrap; }
+.toolbar button { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+.toolbar button:hover { background: var(--panel2); }
+.toolbar button.convert { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+.layer-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+
+/* Book view: the scene as a manuscript. */
+.book { font-family: var(--font-preview); font-size: 17px; line-height: 1.7; max-width: 620px; }
+.book p { margin: 0 0 .9em; }
+.book .book-scene { font-family: var(--font-display); font-size: 22px; font-weight: 600; margin: 0 0 14px; }
+.book .book-choice { font-style: italic; color: var(--muted); }
+.book .book-draft { border-left: 3px solid var(--speaker); padding-left: 12px; }
+.book .book-code { font-family: var(--font-ui); font-size: 12px; color: var(--muted); }
+.draft-card { margin: 10px 0; padding: 10px 12px; border-left: 3px solid var(--speaker); background: color-mix(in srgb, var(--speaker) 5%, transparent); border-radius: 0 12px 12px 0; }
+.draft-card .tag, .code-card .tag { font-family: var(--font-ui); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--speaker); }
+.code-card { margin: 10px 0; padding: 8px 12px; border-left: 3px solid var(--block); background: var(--panel); border-radius: 0 12px 12px 0; }
+.code-card .tag { color: var(--block); }
+.code-card pre { margin: 4px 0 0; font-family: var(--font-editor); font-size: 12px; white-space: pre-wrap; }
+
+/* Convert dialog: prose on the left, proposed script on the right. */
+.convert-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.convert-grid h3 { margin: 0 0 6px; }
+.convert-grid .prose { font-family: var(--font-preview); font-size: 15px; line-height: 1.6; white-space: pre-wrap; padding: 10px 12px; background: var(--panel2); border-radius: 12px; max-height: 50vh; overflow: auto; }
+.convert-grid textarea { width: 100%; min-height: 260px; max-height: 50vh; font-family: var(--font-editor); font-size: 13px; line-height: 1.55; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); resize: vertical; }
+.checks { margin: 10px 0 0; padding-left: 18px; color: var(--warning); font-size: 13px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.modal-actions button { padding: 7px 16px; border-radius: 999px; border: 1px solid var(--border); }
+.modal.wide { width: min(980px, 100%); }
+@media (max-width: 820px) { .convert-grid { grid-template-columns: 1fr; } }

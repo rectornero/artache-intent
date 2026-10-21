@@ -2,6 +2,7 @@ import type { Command, Cond, DataBlock, Inline, Node, Script } from "../core/ast
 import type { ProjectConfig } from "../core/config.ts";
 import { slug } from "../core/parser.ts";
 import { addMissing, newReport, type Report } from "./report.ts";
+import { paragraphs } from "./renpy.ts";
 
 // RPG Maker MV event commands are { code, indent, parameters }. Codes used here:
 // 101/401 text, 102/402/404 choices, 111/411/412 conditional branch, 117 common event,
@@ -337,6 +338,22 @@ export class MvExporter {
           break;
         case "note":
           out.push(cmd(108, ind, [n.text]));
+          break;
+        case "draft":
+          this.report.notes.push(`Line ${n.line}: draft prose exported as plain narration until it's converted.`);
+          for (const p of paragraphs(n.text)) this.say(out, ind, this.cfg.narrator, undefined, undefined, p);
+          break;
+        case "code":
+          if (n.engine !== "mv") {
+            this.report.notes.push(`Line ${n.line}: ::: ${n.engine} block skipped (MV export).`);
+            out.push(cmd(108, ind, [`::: ${n.engine} block (other engine)`]));
+          } else {
+            // An ::: mv block is JavaScript, run as one Script command.
+            const [first, ...rest] = n.text.split("\n");
+            out.push(cmd(355, ind, [first]), ...rest.map((l) => cmd(655, ind, [l])));
+          }
+          break;
+        case "original":
           break;
         case "todo":
           this.report.todos.push({ text: n.text, line: n.line });

@@ -23,6 +23,11 @@ function rpyString(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\[/g, "[[").replace(/\{/g, "{{");
 }
 
+/** Blank-line separated paragraphs, each folded onto one line. */
+export function paragraphs(text: string): string[] {
+  return text.split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean);
+}
+
 export class RenpyExporter {
   report = newReport();
   private extraLabels: string[][] = [];
@@ -267,6 +272,19 @@ export class RenpyExporter {
       case "todo":
         this.report.todos.push({ text: n.text, line: n.line });
         return [`${ind}if config.developer:`, `${ind}${IND}"{color=#f0f}TODO: ${rpyString(n.text)}{/color}"`];
+      case "draft": {
+        this.report.notes.push(`Line ${n.line}: draft prose exported as plain narration until it's converted.`);
+        const who = this.sayer(this.cfg.narrator);
+        return paragraphs(n.text).map((p) => `${ind}${who ? `${who} ` : ""}"${rpyString(p)}"`);
+      }
+      case "code":
+        if (n.engine !== "renpy") {
+          this.report.notes.push(`Line ${n.line}: ::: ${n.engine} block skipped (Ren'Py export).`);
+          return [`${ind}# ::: ${n.engine} block (other engine)`];
+        }
+        return n.text.split("\n").map((l) => (l.trim() ? ind + l : ""));
+      case "original":
+        return [];
     }
   }
 

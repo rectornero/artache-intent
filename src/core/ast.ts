@@ -87,7 +87,13 @@ export type Node =
   | { n: "if"; line: number; branches: Array<{ cond: Cond | null; body: Node[] }> }
   | { n: "custom"; line: number; type: string; header: string; items: CustomItem[] }
   | { n: "note"; line: number; text: string }
-  | { n: "todo"; line: number; text: string };
+  | { n: "todo"; line: number; text: string }
+  /** Layer 1: free prose not converted to script yet. */
+  | { n: "draft"; line: number; text: string }
+  /** Layer 3: engine code passed through to that engine only. */
+  | { n: "code"; line: number; engine: "renpy" | "mv"; text: string }
+  /** The prose a converted passage came from; only the Book view shows it. */
+  | { n: "original"; line: number; text: string };
 
 export interface Scene {
   id: string;

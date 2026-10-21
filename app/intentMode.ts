@@ -3,7 +3,8 @@
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
 import { linter, type Diagnostic as CmDiagnostic } from "@codemirror/lint";
 import { tags as t } from "@lezer/highlight";
-import type { Extension } from "@codemirror/state";
+import { RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
+import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 import type { Diagnostic } from "../src/core/ast.ts";
 
 interface St {
@@ -71,4 +72,27 @@ export function intentLinter(get: () => Diagnostic[]): Extension {
     },
     { delay: 300 },
   );
+}
+
+/** A coloured margin stripe on every line of a ::: draft / renpy / mv block. */
+function stripes(doc: { lines: number; line: (n: number) => { from: number; text: string } }): DecorationSet {
+  const b = new RangeSetBuilder<Decoration>();
+  let kind: string | null = null;
+  for (let n = 1; n <= doc.lines; n++) {
+    const line = doc.line(n);
+    const t = line.text.trim();
+    const open = t.match(/^:::\s*(draft|renpy|mv|was-draft)\s*$/);
+    if (!kind && open) kind = open[1];
+    if (kind) b.add(line.from, line.from, Decoration.line({ class: `cm-ilayer cm-ilayer-${kind}` }));
+    if (kind && t === ":::" ) kind = null;
+  }
+  return b.finish();
+}
+
+export function layerStripes(): Extension {
+  return StateField.define<DecorationSet>({
+    create: (s) => stripes(s.doc),
+    update: (d, tr) => (tr.docChanged ? stripes(tr.state.doc) : d),
+    provide: (f) => EditorView.decorations.from(f),
+  });
 }

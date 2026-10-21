@@ -4,12 +4,13 @@ import { conditionText } from "../src/core/condition.ts";
 import { slug } from "../src/core/parser.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
-import { PreviewNodes } from "./Preview.tsx";
+import { applyConversion, draftToScript } from "../src/core/convert.ts";
+import { BookView, PreviewNodes } from "./Preview.tsx";
 import { SAMPLES, newProject } from "./samples.ts";
 import { deliverExport, isTauri, loadPrefs, loadProjects, openFolder, savePrefs, saveProjects, saveToFolder, type Project } from "./storage.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPrefs } from "./themes.ts";
 
-type Tab = "preview" | "renpy" | "mv" | "report" | "bible";
+type Tab = "play" | "book" | "renpy" | "mv" | "report" | "bible";
 type MobileView = "files" | "write" | "preview";
 
 function safeCompile(p: Project): CompileResult | { error: string } {
@@ -34,11 +35,12 @@ export function App() {
   const [fileName, setFileName] = useState(() => firstScript(project));
   const file = project.files[fileName] !== undefined ? fileName : firstScript(project);
   const [cursorLine, setCursorLine] = useState(1);
-  const [tab, setTab] = useState<Tab>("preview");
+  const [tab, setTab] = useState<Tab>("play");
   const [jump, setJump] = useState<{ line: number; n: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobile, setMobile] = useState<MobileView>("write");
   const [toast, setToast] = useState("");
+  const [converting, setConverting] = useState<{ line: number; prose: string; script: string; checks: string[] } | null>(null);
 
   const theme = activeTheme(prefs);
   useEffect(() => {
@@ -93,6 +95,51 @@ export function App() {
       ...script.blocks.map((b) => ({ line: b.line, label: `@${b.kind} ${b.name}`, depth: 0 })),
     ].sort((a, b) => a.line - b.line);
   }, [script]);
+
+  // The ::: draft block under the cursor, if any (1-based line of its opening fence).
+  const source = project.files[file] ?? "";
+  const draftAtCursor = useMemo(() => {
+    if (file.endsWith(".json")) return null;
+    const lines = source.split("\n");
+    let open: number | null = null;
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (open === null && /^:::\s*draft\s*$/.test(t)) open = i;
+      else if (open !== null && t === ":::") {
+        if (cursorLine >= open + 1 && cursorLine <= i + 1) return { line: open + 1, prose: lines.slice(open + 1, i).join("\n") };
+        open = null;
+      } else if (open === null && /^:::/.test(t) && t !== ":::") {
+        // another layer opens: skip to its close
+        while (i + 1 < lines.length && lines[i + 1].trim() !== ":::") i++;
+        i++;
+      }
+    }
+    return null;
+  }, [source, file, cursorLine]);
+
+  const startConvert = () => {
+    if (!draftAtCursor || !ok) return;
+    const names = ok.scripts.flatMap((s) => s.blocks.filter((b) => b.kind === "npc").map((b) => b.name));
+    const c = draftToScript(draftAtCursor.prose, ok.config, names);
+    setConverting({ ...draftAtCursor, ...c });
+  };
+
+  const acceptConvert = () => {
+    if (!converting) return;
+    update(applyConversion(source, converting.line, converting.script));
+    setJump({ line: converting.line, n: Date.now() });
+    setConverting(null);
+    say("Draft converted. The prose is kept below as was-draft.");
+  };
+
+  const insertBlock = (kind: "draft" | "renpy" | "mv") => {
+    const lines = source.split("\n");
+    const hint = { draft: "Write freely here, like a book.", renpy: "# Ren'Py code, passed through as is", mv: "// MV script call, passed through as is" }[kind];
+    const at = Math.min(cursorLine, lines.length);
+    lines.splice(at, 0, "", `::: ${kind}`, hint, ":::", "");
+    update(lines.join("\n"));
+    setJump({ line: at + 3, n: Date.now() });
+  };
 
   const addFile = () => {
     const name = prompt("New script file name", "chapter.intent");
@@ -180,6 +227,18 @@ export function App() {
       </aside>
 
       <main className="main">
+        {!file.endsWith(".json") && (
+          <div className="toolbar" role="toolbar" aria-label="Layers">
+            {draftAtCursor ? (
+              <button className="convert" onClick={startConvert} data-testid="convert">Convert draft to script</button>
+            ) : (
+              <span className="label">Add a layer:</span>
+            )}
+            <button onClick={() => insertBlock("draft")}><span className="layer-dot" style={{ background: "var(--speaker)" }} />Draft</button>
+            <button onClick={() => insertBlock("renpy")}><span className="layer-dot" style={{ background: "var(--block)" }} />Ren'Py code</button>
+            <button onClick={() => insertBlock("mv")}><span className="layer-dot" style={{ background: "var(--block)" }} />MV code</button>
+          </div>
+        )}
         <Editor
           docKey={`${project.id}/${file}`}
           value={project.files[file] ?? ""}
@@ -204,21 +263,25 @@ export function App() {
       {sideOpen && (
         <section className="panel">
           <nav className="tabs" role="tablist">
-            {(["preview", "renpy", "mv", "report", "bible"] as Tab[]).map((t) => (
+            {(["play", "book", "renpy", "mv", "report", "bible"] as Tab[]).map((t) => (
               <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-                {{ preview: "Preview", renpy: "Ren'Py", mv: "RPG Maker MV", report: "Report", bible: "Bible" }[t]}
+                {{ play: "Play", book: "Book", renpy: "Ren'Py", mv: "RPG Maker MV", report: "Report", bible: "Bible" }[t]}
               </button>
             ))}
           </nav>
           <div className="panel-body" data-testid="panel">
             {"error" in result ? (
               <div className="error-box">Project settings can't be read: {result.error}</div>
-            ) : tab === "preview" ? (
+            ) : tab === "play" || tab === "book" ? (
               focus ? (
-                <div className="preview">
-                  <div className="preview-title">{focus.title}</div>
-                  <PreviewNodes nodes={focus.nodes} cfg={result.config} />
-                </div>
+                tab === "book" ? (
+                  <BookView title={focus.title} nodes={focus.nodes} cfg={result.config} />
+                ) : (
+                  <div className="preview">
+                    <div className="preview-title">{focus.title}</div>
+                    <PreviewNodes nodes={focus.nodes} cfg={result.config} />
+                  </div>
+                )
               ) : (
                 <div className="empty">
                   <img src={theme.brand.icon} alt="" />
@@ -241,11 +304,41 @@ export function App() {
       <nav className="mobile-nav">
         {(["files", "write", "preview"] as MobileView[]).map((m) => (
           <button key={m} className={mobile === m ? "active" : ""} onClick={() => setMobile(m)}>
-            {{ files: "Files", write: "Write", preview: "Preview" }[m]}
+            {{ files: "Files", write: "Write", preview: "Read" }[m]}
           </button>
         ))}
       </nav>
 
+      {converting && (
+        <div className="modal-back" onClick={() => setConverting(null)}>
+          <div className="modal wide" role="dialog" aria-label="Convert draft" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>Convert draft to script</h2>
+              <button className="icon" onClick={() => setConverting(null)} aria-label="Close">✕</button>
+            </div>
+            <p className="muted">Your words stay as written. Intent only splits narration from dialogue and guesses speakers. Edit the right side before you accept; the prose is kept as a was-draft block.</p>
+            <div className="convert-grid">
+              <div>
+                <h3>Draft</h3>
+                <div className="prose">{converting.prose}</div>
+              </div>
+              <div>
+                <h3>Script</h3>
+                <textarea value={converting.script} onChange={(e) => setConverting({ ...converting, script: e.target.value })} spellCheck={false} data-testid="convert-script" />
+              </div>
+            </div>
+            {converting.checks.length > 0 && (
+              <ul className="checks">
+                {converting.checks.map((c, k) => <li key={k}>{c}</li>)}
+              </ul>
+            )}
+            <div className="modal-actions">
+              <button onClick={() => setConverting(null)}>Cancel</button>
+              <button className="primary" onClick={acceptConvert} data-testid="convert-accept">Accept</button>
+            </div>
+          </div>
+        </div>
+      )}
       {settingsOpen && <Settings prefs={prefs} setPrefs={setPrefs} theme={theme} onClose={() => setSettingsOpen(false)} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>

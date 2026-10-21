@@ -12,6 +12,9 @@ interface Line {
   children: Line[];
 }
 
+/** Placeholder line for a fenced block; the block itself is kept aside verbatim. */
+const FENCE = "\u0000fence:";
+
 const RESERVED = new Set(["BG", "CG", "BLACK", "MUSIC", "SOUND", "PAUSE", "SHAKE", "HIDE", "IF", "ELSE", "END", "TODO", "LINEUP"]);
 const DATA_KINDS = new Set(["npc", "talk", "route", "event", "quest", "map", "item", "enemy", "edit", "remove", "rename", "scene"]);
 
@@ -59,6 +62,7 @@ export class Parser {
   private stainCount = 0;
   private aliases: Record<string, string>;
   private macros = new Map<string, string[]>();
+  private fences: Array<{ kind: string; text: string; line: number }> = [];
   private cast: Map<string, string>;
   private stage: StageContext;
   private lastSpeaker: { speaker: string | null; as?: string; mood?: string } = { speaker: null };
@@ -182,9 +186,24 @@ export class Parser {
     const raw = source.replace(/\r\n?/g, "\n").split("\n");
     const out: Array<{ text: string; line: number }> = [];
     let macro: { name: string; body: string[] } | null = null;
+    let fence: { kind: string; body: string[]; line: number; pad: string } | null = null;
     raw.forEach((text, idx) => {
       const line = idx + 1;
       const t = text.trim();
+      // ::: draft / ::: renpy / ::: mv blocks are kept verbatim, notes and all.
+      if (fence) {
+        if (t === ":::") {
+          this.fences.push({ kind: fence.kind, text: fence.body.join("\n").replace(/^\n+|\s+$/g, ""), line: fence.line });
+          out.push({ text: `${fence.pad}${FENCE}${this.fences.length - 1}`, line: fence.line });
+          fence = null;
+        } else fence.body.push(text.slice(Math.min(indentOf(text), fence.pad.length)));
+        return;
+      }
+      const fm = t.match(/^:::\s*(draft|renpy|mv|was-draft)\s*$/);
+      if (fm && !macro) {
+        fence = { kind: fm[1], body: [], line, pad: text.slice(0, indentOf(text)) };
+        return;
+      }
       if (macro) {
         if (t === "@end") {
           this.macros.set(macro.name, macro.body);
@@ -218,6 +237,7 @@ export class Parser {
       out.push({ text: stripTrailingNote(text), line });
     });
     if (macro) this.warn(raw.length, `@macro ${(macro as { name: string }).name} has no @end`, "error");
+    if (fence) this.warn((fence as { line: number }).line, `::: ${(fence as { kind: string }).kind} block has no closing :::`, "error");
     return out;
   }
 
@@ -236,7 +256,14 @@ export class Parser {
       const t = l.text;
       let m: RegExpMatchArray | null;
 
-      if (t.startsWith("~ ") || t === "~") {
+      if (t.startsWith(FENCE)) {
+        const f = this.fences[Number(t.slice(FENCE.length))];
+        if (f.kind === "draft") {
+          out.push({ n: "draft", line: f.line, text: f.text });
+          this.warn(f.line, "Draft not converted yet: it exports as plain narration", "info");
+        } else if (f.kind === "was-draft") out.push({ n: "original", line: f.line, text: f.text });
+        else out.push({ n: "code", line: f.line, engine: f.kind as "renpy" | "mv", text: f.text });
+      } else if (t.startsWith("~ ") || t === "~") {
         out.push({ n: "note", line: l.line, text: t.slice(1).trim() });
       } else if ((m = t.match(/^TODO:?\s*(.*)$/))) {
         out.push({ n: "todo", line: l.line, text: m[1] });
