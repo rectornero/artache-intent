@@ -5,9 +5,15 @@ import { slug } from "../src/core/parser.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
 import { toLayer, type Layer } from "../src/core/layers.ts";
-import { CLAUDE_MODELS, claudePrompt, claudeUpdate, explainFailure, loadApiKey, loadModel, saveApiKey, saveModel, type ClaudeModel } from "./claude.ts";
+import { CLAUDE_MODELS, checkJob, explainFailure, loadApiKey, loadModel, loadVia, promptJob, runJob, saveApiKey, saveModel, saveVia, updateJob, type ClaudeModel, type ClaudeVia, type Job } from "./claude.ts";
+import { HandoffModal } from "./HandoffModal.tsx";
+import { ChecksPanel } from "./ChecksPanel.tsx";
+import { CHECKS_FILE, mergeRun, readChecks, writeChecks } from "../src/core/checks.ts";
 import { isVersionFile, markSynced, neighbours, pairOf, pairState, inSync, readSync, SYNC_FILE, versionFile, type PairState, type Version } from "../src/core/sync.ts";
 import { lineDiff } from "../src/core/diff.ts";
+
+/** A copy-and-paste request the writer closed: nothing to report. */
+const CANCELLED = new Error("cancelled");
 
 const VERSION_NAMES: Record<Version, string> = { draft: "Draft", play: "Play", renpy: "Code" };
 
@@ -26,7 +32,7 @@ import { SAMPLES, newProject } from "./samples.ts";
 import { deliverExport, whenSaveFails, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, savePrefs, saveFileAs, saveProjects, saveToFolder, type Project } from "./storage.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPrefs } from "./themes.ts";
 
-type Tab = "sheet" | "play" | "book" | "search" | "renpy" | "mv" | "report" | "bible" | "history";
+type Tab = "sheet" | "play" | "book" | "search" | "checks" | "renpy" | "mv" | "report" | "bible" | "history";
 type MobileView = "files" | "write" | "preview";
 type ToastAction = { label: string; run: () => void };
 
@@ -35,9 +41,9 @@ const PANEL_GROUPS: Array<{ id: string; label: string; icon: string; tabs: Tab[]
   { id: "read", label: "Read", icon: "story", tabs: ["play", "book"] },
   { id: "find", label: "Find", icon: "search", tabs: ["search"] },
   { id: "export", label: "Export", icon: "engine", tabs: ["report", "mv", "renpy"] },
-  { id: "tools", label: "Tools", icon: "data", tabs: ["history", "bible"] },
+  { id: "tools", label: "Tools", icon: "data", tabs: ["checks", "history", "bible"] },
 ];
-const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", search: "Find", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
+const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", search: "Find", checks: "Story check", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
 
 function safeCompile(p: Project): CompileResult | { error: string } {
   try {
@@ -75,6 +81,8 @@ export function App() {
   const [toastAction, setToastAction] = useState<ToastAction | null>(null);
   const [apiKey, setApiKey] = useState(loadApiKey);
   const [model, setModel] = useState<ClaudeModel>(loadModel);
+  const [via, setVia] = useState<ClaudeVia>(loadVia);
+  const [handoff, setHandoff] = useState<{ job: Job<unknown>; resolve: (v: unknown) => void; reject: (e: Error) => void } | null>(null);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number; file: string } | null>(null);
@@ -126,6 +134,16 @@ export function App() {
   const states = isScript ? neighbours(layer).map((n) => ({ n, s: pairState(project.files, file, layer, n) })) : [];
   const behind = (v: Version) => isScript && neighbours(v).some((n) => { const st = pairState(project.files, file, v, n); return !st.missing && !inSync(st); });
 
+  // Every ✦ job goes through here: on the API key, or by copy and paste when there's no key
+  // or the writer prefers it. A closed hand-off rejects with CANCELLED and changes nothing.
+  const askClaude = <T,>(job: Job<T>, forcePaste = false): Promise<T> => {
+    if (apiKey && via === "api" && !forcePaste) {
+      setBusy(`Claude: ${job.title}…`);
+      return runJob(apiKey, model, job).finally(() => setBusy(null));
+    }
+    return new Promise<T>((resolve, reject) => setHandoff({ job: job as Job<unknown>, resolve: resolve as (v: unknown) => void, reject }));
+  };
+
   // ✦ Update: bring version `to` in step with `from`, then review before it changes.
   const syncVersions = async (from: Version, to: Version) => {
     if (!ok || busy) return;
@@ -137,14 +155,11 @@ export function App() {
     if (from === "play" && to === "renpy" && (base.renpy === undefined || base.renpy === target)) {
       proposed = compiledCode(after); // Code nobody edited by hand: Intent writes it, no Claude needed.
     } else {
-      if (!apiKey) return say("Updating needs your Claude key.", 8000, { label: "Settings", run: () => setSettingsOpen(true) });
-      setBusy(`Claude is updating ${VERSION_NAMES[to]} from ${VERSION_NAMES[from]}…`);
       try {
-        proposed = await claudeUpdate(apiKey, model, { from, to, before: base[from] ?? "", after, target }, ok.config, ok.sheets.map((x) => x.sheet));
+        proposed = await askClaude(updateJob({ from, to, before: base[from] ?? "", after, target }, ok.config, ok.sheets.map((x) => x.sheet)));
       } catch (e) {
+        if (e === CANCELLED) return;
         return say(`Claude couldn't update: ${explainFailure(e)}. Nothing changed.`, 8000);
-      } finally {
-        setBusy(null);
       }
     }
     setReviewing({ projectId: project.id, play: file, from, to, before: target, after: proposed, fromText: after });
@@ -172,15 +187,31 @@ export function App() {
   };
   const switchLayer = (l: Layer) => setLayer(l);
   const draftPrompt = async (kind: "image" | "song", sheet: Sheet, earlier: string[]) => {
-    if (!apiKey) {
-      say("Drafting prompts needs your Claude key.", 8000, { label: "Settings", run: () => setSettingsOpen(true) });
-      throw new Error("Add your Claude key in Settings first.");
-    }
     try {
-      return await claudePrompt(apiKey, model, kind, sheet, earlier);
+      return await askClaude(promptJob(kind, sheet, earlier));
     } catch (e) {
-      throw new Error(`Claude couldn't write it: ${explainFailure(e)}.`);
+      throw new Error(e === CANCELLED ? "Not drafted." : `Claude couldn't write it: ${explainFailure(e)}.`);
     }
+  };
+
+  // ✦ Check story: the open script (or every script) against the sheets. Results live in the project.
+  const runCheck = async (whole: boolean) => {
+    if (!ok) return;
+    const scripts = Object.fromEntries(Object.entries(project.files).filter(([n]) => n.endsWith(".intent")));
+    const check = whole || !isScript ? scripts : { [file]: scripts[file] };
+    const id = project.id;
+    try {
+      const found = await askClaude(checkJob(check, whole || !isScript, ok.config, ok.sheets.map((x) => x.sheet)));
+      setProjects((list) => list.map((p) => (p.id === id ? { ...p, files: { ...p.files, [CHECKS_FILE]: writeChecks(mergeRun(readChecks(p.files), Object.keys(check), found)) } } : p)));
+      say(found.length ? `${found.length} possible problem${found.length > 1 ? "s" : ""} found.` : "No problems found.", 5000);
+    } catch (e) {
+      if (e !== CANCELLED) say(`Claude couldn't check: ${explainFailure(e)}.`, 8000);
+    }
+  };
+  const dismissIssue = (issueId: string, on: boolean) => {
+    const c = readChecks(project.files);
+    c.dismissed = on ? [...new Set([...c.dismissed, issueId])] : c.dismissed.filter((d) => d !== issueId);
+    setFile(CHECKS_FILE, writeChecks(c));
   };
 
   const say = (msg: string, ms = 2500, action: ToastAction | null = null) => {
@@ -661,6 +692,8 @@ export function App() {
                 onDraftPrompt={draftPrompt}
                 onRename={(n) => renameSheetTo(sheetFile, n)}
               />
+            ) : tab === "checks" ? (
+              <ChecksPanel files={project.files} script={isScript ? file : null} busy={!!busy} onRun={(w) => void runCheck(w)} onOpen={openAt} onDismiss={dismissIssue} />
             ) : tab === "search" ? (
               <SearchPanel files={project.files} onOpen={openAt} onReplace={applyReplace} />
             ) : tab === "play" || tab === "book" || tab === "sheet" ? (
@@ -779,7 +812,15 @@ export function App() {
           </div>
         </div>
       )}
-      {settingsOpen && <Settings prefs={prefs} setPrefs={setPrefs} theme={theme} apiKey={apiKey} setApiKey={(k) => { saveApiKey(k); setApiKey(k.trim()); }} model={model} setModel={(m) => { saveModel(m); setModel(m); }} onClose={() => setSettingsOpen(false)} />}
+      {handoff && (
+        <HandoffModal
+          job={handoff.job}
+          onAnswer={(v) => { handoff.resolve(v); setHandoff(null); }}
+          onCancel={() => { handoff.reject(CANCELLED); setHandoff(null); }}
+          onUseKey={apiKey ? () => { const h = handoff; setHandoff(null); setBusy(`Claude: ${h.job.title}…`); runJob(apiKey, model, h.job).then(h.resolve, h.reject).finally(() => setBusy(null)); } : undefined}
+        />
+      )}
+      {settingsOpen && <Settings prefs={prefs} setPrefs={setPrefs} theme={theme} apiKey={apiKey} setApiKey={(k) => { saveApiKey(k); setApiKey(k.trim()); }} model={model} setModel={(m) => { saveModel(m); setModel(m); }} via={via} setVia={(v) => { saveVia(v); setVia(v); }} onClose={() => setSettingsOpen(false)} />}
       {busy && <div className="busy" role="status"><span className="spinner" />{busy}</div>}
       {toast && (
         <div className="toast" role="status">
@@ -825,7 +866,7 @@ function MvView({ json }: { json: string }) {
   );
 }
 
-function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, setModel, onClose }: { prefs: UiPrefs; setPrefs: (p: UiPrefs) => void; theme: Theme; apiKey: string; setApiKey: (k: string) => void; model: ClaudeModel; setModel: (m: ClaudeModel) => void; onClose: () => void }) {
+function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, setModel, via, setVia, onClose }: { prefs: UiPrefs; setPrefs: (p: UiPrefs) => void; theme: Theme; apiKey: string; setApiKey: (k: string) => void; model: ClaudeModel; setModel: (m: ClaudeModel) => void; via: ClaudeVia; setVia: (v: ClaudeVia) => void; onClose: () => void }) {
   const [keyDraft, setKeyDraft] = useState("");
   const custom: Theme = prefs.custom ?? { ...structuredClone(theme), id: "custom", label: "Custom" };
   const setCustom = (t: Theme) => setPrefs({ ...prefs, custom: t, themeId: "custom" });
@@ -880,9 +921,19 @@ function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, setModel, 
         </div>
         <h3>Claude</h3>
         <div className="claude-key">
+          <p className="muted">Claude keeps Draft, Play and Code in step (✦ Update), checks your story, and drafts image and song prompts. Choose how Intent asks it:</p>
+          <div className="model-pick" role="radiogroup" aria-label="How Intent asks Claude">
+            <button role="radio" aria-checked={via === "paste" || !apiKey} className={via === "paste" || !apiKey ? "on" : ""} onClick={() => setVia("paste")}>
+              <b>Copy and paste</b>
+              <span>No key needed. Intent copies each request; you paste it into the Claude app, claude.ai or Claude Code, then paste the answer back.</span>
+            </button>
+            <button role="radio" aria-checked={via === "api" && !!apiKey} className={via === "api" && apiKey ? "on" : ""} onClick={() => setVia("api")}>
+              <b>My API key</b>
+              <span>One click, done in the app. Billed to your Anthropic account.</span>
+            </button>
+          </div>
           <p className="muted">
-            With your Anthropic API key, Claude keeps Draft, Play and Code in step when you press ✦ Update, and drafts image and song prompts on sheets. Without it,
-            the versions stay as you wrote them. The key stays on this device: it is never saved in your project or its exports. Get one at console.anthropic.com → API keys.
+            The key stays on this device: it is never saved in your project or its exports. Get one at console.anthropic.com → API keys.
           </p>
           {apiKey ? (
             <div className="row">

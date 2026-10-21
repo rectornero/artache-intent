@@ -175,3 +175,11 @@ expressions: neutral, nervous
 - **Renaming a sheet** (edit its name, or use Rename… in its ⋯ menu) renames the file and updates every whole-word mention in scripts and sheets, keeping each mention's case (LIMO → LUNA).
 - **Renaming or deleting a script** carries its Draft and Code versions and its sync record with it.
 - Every one of these saves the old text to History first, and the toast offers Undo.
+
+## Story check (0.3)
+
+Tools → Story check → **✦ Check story**. Claude reads the open script (or, with *Whole project*, every script) against the sheets and lists problems by severity: continuity slips, contradictions with a sheet, timeline errors, loose threads, and names spelled two ways. Each problem gives a line, a short quote, and a suggested fix. *Go to line* follows the quote even after edits; *Dismiss* hides a problem, and it stays hidden when a later check finds it again. Results are saved in `intent.checks.json` with the project.
+
+## Claude without an API key (0.3)
+
+Settings → Claude → **Copy and paste**, or simply no key. Every ✦ action (Update, Check story, prompt drafting) opens a three-step card: copy the request, paste it into the Claude app, claude.ai or Claude Code, then paste the answer back. The answer goes through the same review as an API answer.

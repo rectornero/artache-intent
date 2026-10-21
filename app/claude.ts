@@ -5,6 +5,7 @@
 import spec from "../docs/SPEC.md?raw";
 import type { ProjectConfig } from "../src/core/config.ts";
 import type { Sheet } from "../src/core/sheets.ts";
+import { ISSUE_KINDS, numbered, type Issue } from "../src/core/checks.ts";
 
 const KEY = "artache-intent.anthropic-key";
 const MODEL_KEY = "artache-intent.claude-model";
@@ -29,6 +30,26 @@ export function loadModel(): ClaudeModel {
 export function saveModel(m: ClaudeModel) {
   try {
     localStorage.setItem(MODEL_KEY, m);
+  } catch {
+    // Storage blocked: the choice lasts for this session only.
+  }
+}
+
+/** How Intent asks Claude: on the API key, or by copy and paste through the Claude app or Claude Code. */
+export type ClaudeVia = "api" | "paste";
+const VIA_KEY = "artache-intent.claude-via";
+
+export function loadVia(): ClaudeVia {
+  try {
+    return localStorage.getItem(VIA_KEY) === "paste" ? "paste" : "api";
+  } catch {
+    return "api";
+  }
+}
+
+export function saveVia(v: ClaudeVia) {
+  try {
+    localStorage.setItem(VIA_KEY, v);
   } catch {
     // Storage blocked: the choice lasts for this session only.
   }
@@ -99,6 +120,65 @@ function context(cfg: ProjectConfig, sheets: Sheet[]): string {
   ].join("\n\n");
 }
 
+/**
+ * One job for Claude. It runs on the writer's API key, or it is copied out for
+ * the writer to paste into the Claude app or Claude Code, and the answer pasted back.
+ */
+export interface Job<T> {
+  /** What the job does, in a few words ("Update Code from Play"). */
+  title: string;
+  system: string;
+  content: string;
+  schema: Record<string, unknown>;
+  effort: "low" | "medium";
+  maxTokens: number;
+  thinking: boolean;
+  /** The structured answer from the API. */
+  read: (data: unknown) => T;
+  /** How the pasted answer should look, and how to read it. */
+  pasteAs: string;
+  readPasted: (answer: string) => T;
+}
+
+/** Runs a job on the API. Throws on any failure; nothing is changed then. */
+export async function runJob<T>(apiKey: string, model: ClaudeModel, job: Job<T>): Promise<T> {
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  const message = await client.beta.messages
+    .stream({
+      model,
+      max_tokens: job.maxTokens,
+      // Haiku 5.5 has no server-side fallback; the others retry a declined request on another model.
+      ...(model === "claude-haiku-5-5" ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
+      ...(job.thinking ? { thinking: { type: "adaptive" as const } } : {}),
+      output_config: { effort: job.effort, format: { type: "json_schema", schema: job.schema } },
+      system: job.system,
+      messages: [{ role: "user", content: job.content }],
+    })
+    .finalMessage();
+  if (message.stop_reason === "refusal") throw new Error("Claude declined this text");
+  if (message.stop_reason === "max_tokens") throw new Error("the text is too long for one go");
+  return job.read(JSON.parse(message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("")));
+}
+
+/** The whole job as one message to paste into the Claude app or Claude Code. */
+export function handoffText(job: Job<unknown>): string {
+  return [
+    `This request comes from Artache Intent, a game script editor. Please do the task below and answer in the format asked at the end, with nothing else around it.`,
+    `<instructions>\n${job.system}\n</instructions>`,
+    job.content,
+    `<answer_format>\n${job.pasteAs}\n</answer_format>`,
+  ].join("\n\n");
+}
+
+/** The inside of the longest ``` fenced block in a reply, or the whole reply. */
+export function fenced(answer: string): string {
+  const blocks = [...answer.matchAll(/```[\w-]*[^\S\n]*\n([\s\S]*?)\n?```/g)].map((m) => m[1]);
+  return blocks.length ? blocks.sort((a, b) => b.length - a.length)[0] : answer.trim();
+}
+
+const NAMES_SHORT = { draft: "Draft", play: "Play", renpy: "Code" } as const;
+
 export interface UpdateRequest {
   from: Version;
   to: Version;
@@ -109,35 +189,32 @@ export interface UpdateRequest {
   target: string;
 }
 
-/** The updated text of `to`. Throws on any failure; nothing is changed then. */
-export async function claudeUpdate(apiKey: string, model: ClaudeModel, req: UpdateRequest, cfg: ProjectConfig, sheets: Sheet[]): Promise<string> {
-  const { default: Anthropic } = await import("@anthropic-ai/sdk");
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-  const content = [
-    context(cfg, sheets),
-    `Changed version: ${NAMES[req.from]}. Version to update: ${NAMES[req.to]}.`,
-    `<changed_before>\n${req.before}\n</changed_before>`,
-    `<changed_after>\n${req.after}\n</changed_after>`,
-    `<to_update>\n${req.target}\n</to_update>`,
-    `Return the full updated ${NAMES[req.to]}.`,
-  ].join("\n\n");
-  const message = await client.beta.messages
-    .stream({
-      model,
-      max_tokens: 64000,
-      // Haiku 5.5 has no server-side fallback; the others retry a declined request on another model.
-      ...(model === "claude-haiku-5-5" ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
-      thinking: { type: "adaptive" },
-      output_config: { effort: "medium", format: FORMAT },
-      system: SYSTEM,
-      messages: [{ role: "user", content }],
-    })
-    .finalMessage();
-  if (message.stop_reason === "refusal") throw new Error("Claude declined this text");
-  if (message.stop_reason === "max_tokens") throw new Error("the text is too long for one go");
-  const text = message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-  return (JSON.parse(text) as { text: string }).text.replace(/\s+$/, "") + "\n";
+/** Bring `to` in step with the changes made to `from`; the answer is the full new text. */
+export function updateJob(req: UpdateRequest, cfg: ProjectConfig, sheets: Sheet[]): Job<string> {
+  const tidy = (t: string) => t.replace(/\s+$/, "") + "\n";
+  return {
+    title: `Update ${NAMES_SHORT[req.to]} from ${NAMES_SHORT[req.from]}`,
+    system: SYSTEM,
+    content: [
+      context(cfg, sheets),
+      `Changed version: ${NAMES[req.from]}. Version to update: ${NAMES[req.to]}.`,
+      `<changed_before>\n${req.before}\n</changed_before>`,
+      `<changed_after>\n${req.after}\n</changed_after>`,
+      `<to_update>\n${req.target}\n</to_update>`,
+      `Return the full updated ${NAMES[req.to]}.`,
+    ].join("\n\n"),
+    schema: FORMAT.schema,
+    effort: "medium",
+    maxTokens: 64000,
+    thinking: true,
+    read: (d) => tidy((d as { text: string }).text),
+    pasteAs: `The full updated ${NAMES[req.to]}, and only that, inside one fenced code block (\`\`\`text … \`\`\`).`,
+    readPasted: (a) => tidy(fenced(a)),
+  };
 }
+
+/** The updated text of `to`. Throws on any failure; nothing is changed then. */
+export const claudeUpdate = (apiKey: string, model: ClaudeModel, req: UpdateRequest, cfg: ProjectConfig, sheets: Sheet[]) => runJob(apiKey, model, updateJob(req, cfg, sheets));
 
 const PROMPT_SYSTEM = `You write prompts for generative tools from a game writer's sheet.
 - Image prompts are for an image generator: one paragraph, concrete and visual (subject, look, clothing, pose or framing, setting, light, colour, mood). Characters: a visual novel character sprite, full body, plain background unless the sheet says otherwise. Places: a visual novel background, no people unless the sheet says so. No camera brand names, no artist names.
@@ -146,21 +223,102 @@ const PROMPT_SYSTEM = `You write prompts for generative tools from a game writer
 - Write in English. Return just the prompt.`;
 
 /** One new image or song prompt drawn from a sheet. */
-export async function claudePrompt(apiKey: string, model: ClaudeModel, kind: "image" | "song", sheet: Sheet, earlier: string[]): Promise<string> {
-  const { default: Anthropic } = await import("@anthropic-ai/sdk");
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+export function promptJob(kind: "image" | "song", sheet: Sheet, earlier: string[]): Job<string> {
   const fields = Object.entries(sheet.fields).filter(([k, v]) => v.trim() && !k.endsWith("Prompts")).map(([k, v]) => `${k}: ${v}`).join("\n");
-  const message = await client.beta.messages.create({
-    model,
-    max_tokens: 4000,
-    ...(model === "claude-haiku-5-5" ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
-    output_config: { effort: "low", format: { type: "json_schema", schema: { type: "object", properties: { prompt: { type: "string" } }, required: ["prompt"], additionalProperties: false } } },
+  return {
+    title: `Write a ${kind} prompt for ${sheet.name}`,
     system: PROMPT_SYSTEM,
-    messages: [{ role: "user", content: `Write one ${kind} prompt for this ${sheet.kind}.\n\n@${sheet.kind} ${sheet.name}\n${fields || "(no details yet)"}${sheet.notes.length ? `\nNotes: ${sheet.notes.join(" ")}` : ""}${earlier.length ? `\n\nEarlier prompts:\n${earlier.map((p) => `- ${p}`).join("\n")}` : ""}` }],
-  });
-  if (message.stop_reason === "refusal") throw new Error("Claude declined this prompt");
-  const text = message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-  return (JSON.parse(text) as { prompt: string }).prompt.trim();
+    content: `Write one ${kind} prompt for this ${sheet.kind}.\n\n@${sheet.kind} ${sheet.name}\n${fields || "(no details yet)"}${sheet.notes.length ? `\nNotes: ${sheet.notes.join(" ")}` : ""}${earlier.length ? `\n\nEarlier prompts:\n${earlier.map((p) => `- ${p}`).join("\n")}` : ""}`,
+    schema: { type: "object", properties: { prompt: { type: "string" } }, required: ["prompt"], additionalProperties: false },
+    effort: "low",
+    maxTokens: 4000,
+    thinking: false,
+    read: (d) => (d as { prompt: string }).prompt.trim(),
+    pasteAs: "Just the prompt, as plain text.",
+    readPasted: (a) => fenced(a),
+  };
+}
+
+export const claudePrompt = (apiKey: string, model: ClaudeModel, kind: "image" | "song", sheet: Sheet, earlier: string[]) => runJob(apiKey, model, promptJob(kind, sheet, earlier));
+
+const CHECK_SYSTEM = `You are a story editor checking a game script for problems a careful reader or player would notice. The scripts are in Intent Script (reference below); each line starts with its number and "| ".
+
+Report only real problems, each tied to the line where it shows:
+- continuity: something contradicts what happened earlier (an object, injury, knowledge, who is present, what was said).
+- sheet: the text contradicts a character's, place's or item's sheet (gender, role, look, facts, relationships).
+- timeline: events out of order, impossible timing, days or times that don't add up.
+- thread: a setup, promise, clue or question that is never paid off in what you were given, or a payoff with no setup. Only when you read the whole project, or when it's clearly inside the given script.
+- name: one person, place or thing named or spelled two ways.
+- other: anything else that would confuse a reader. Not style, not taste, not grammar.
+
+Each problem: the file, the line number, a short exact quote copied from that line (a few words, no line number), a one-sentence problem, and a one-sentence suggested fix in the writer's terms. Severity: high if it breaks the story, medium if a reader would notice, low if minor. Don't repeat a problem on every line it touches: report it once, where it first goes wrong. Write in English. If there are none, return an empty list.
+
+Intent Script reference:
+
+${spec}`;
+
+const CHECK_FORMAT = {
+  type: "json_schema" as const,
+  schema: {
+    type: "object",
+    properties: {
+      issues: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            file: { type: "string" },
+            line: { type: "integer" },
+            quote: { type: "string" },
+            kind: { type: "string", enum: [...ISSUE_KINDS] },
+            severity: { type: "string", enum: ["high", "medium", "low"] },
+            problem: { type: "string" },
+            suggestion: { type: "string" },
+          },
+          required: ["file", "line", "quote", "kind", "severity", "problem", "suggestion"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["issues"],
+    additionalProperties: false,
+  },
+};
+
+type Found = Omit<Issue, "id">;
+
+/** Problems in `check` (script file -> Play text), read against the sheets; `whole` when it's every script. */
+export function checkJob(check: Record<string, string>, whole: boolean, cfg: ProjectConfig, sheets: Sheet[]): Job<Found[]> {
+  const block = Object.entries(check).map(([f, t]) => `<script file="${f}">\n${numbered(t)}\n</script>`).join("\n\n");
+  const keep = (list: Found[]) =>
+    list.filter((i) => check[i.file] !== undefined && i.problem).map((i) => ({
+      ...i,
+      line: Number(i.line) || 1,
+      kind: (ISSUE_KINDS as readonly string[]).includes(i.kind) ? i.kind : "other",
+      severity: ["high", "medium", "low"].includes(i.severity) ? i.severity : "medium",
+      quote: i.quote ?? "",
+      suggestion: i.suggestion ?? "",
+    }));
+  return {
+    title: whole ? "Check the whole story" : `Check ${Object.keys(check).join(", ")}`,
+    system: CHECK_SYSTEM,
+    content: [
+      context(cfg, sheets),
+      `Scripts to check:\n\n${block}`,
+      whole ? "This is the whole project." : "This is one script of a longer project: other chapters may explain things it leaves open, so only report a loose thread when it's clearly inside this script.",
+    ].join("\n\n"),
+    schema: CHECK_FORMAT.schema,
+    effort: "medium",
+    maxTokens: 32000,
+    thinking: true,
+    read: (d) => keep((d as { issues: Found[] }).issues),
+    pasteAs: `JSON only, inside one fenced block (\`\`\`json … \`\`\`), shaped like:\n{"issues": [{"file": "cap1.intent", "line": 12, "quote": "a few exact words", "kind": "${ISSUE_KINDS.join(" | ")}", "severity": "high | medium | low", "problem": "…", "suggestion": "…"}]}\nAn empty list if there are none.`,
+    readPasted: (a) => {
+      const text = fenced(a);
+      const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+      return keep((JSON.parse(json) as { issues: Found[] }).issues ?? []);
+    },
+  };
 }
 
 /** A failure in words a writer can act on. */
