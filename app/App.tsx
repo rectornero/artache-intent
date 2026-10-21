@@ -6,17 +6,20 @@ import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
 import { applyConversion, draftToScript } from "../src/core/convert.ts";
 import { BookView, PreviewNodes } from "./Preview.tsx";
+import { SheetForm, isStub } from "./SheetForm.tsx";
+import type { LinkTarget } from "./intentMode.ts";
+import { detectMinigames, newSheet, sheetFileName, sheetNames, sheetUsage, SHEET_KINDS, type SheetKind } from "../src/core/sheets.ts";
 import { SAMPLES, newProject } from "./samples.ts";
-import { deliverExport, isTauri, loadPrefs, loadProjects, openFolder, savePrefs, saveProjects, saveToFolder, type Project } from "./storage.ts";
+import { deliverExport, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, savePrefs, saveFileAs, saveProjects, saveToFolder, type Project } from "./storage.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPrefs } from "./themes.ts";
 
-type Tab = "play" | "book" | "renpy" | "mv" | "report" | "bible";
+type Tab = "sheet" | "play" | "book" | "renpy" | "mv" | "report" | "bible";
 type MobileView = "files" | "write" | "preview";
 
 function safeCompile(p: Project): CompileResult | { error: string } {
   try {
     const settings = JSON.parse(p.files["intent.json"] || "{}");
-    const sources = Object.fromEntries(Object.entries(p.files).filter(([n]) => n.endsWith(".intent")));
+    const sources = Object.fromEntries(Object.entries(p.files).filter(([n]) => n.endsWith(".intent") || n.endsWith(".sheet")));
     return compileProject(settings, sources, ["renpy", "mv"]);
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
@@ -40,6 +43,9 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobile, setMobile] = useState<MobileView>("write");
   const [toast, setToast] = useState("");
+  const [sheetFile, setSheetFile] = useState<string | null>(null);
+  const [rawSheet, setRawSheet] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number; text: string; link?: LinkTarget } | null>(null);
   const [converting, setConverting] = useState<{ line: number; prose: string; script: string; checks: string[] } | null>(null);
 
   const theme = activeTheme(prefs);
@@ -67,6 +73,81 @@ export function App() {
     setToast(msg);
     setTimeout(() => setToast(""), 2500);
   };
+
+  const setFile = (name: string, text: string) =>
+    setProjects((list) => list.map((p) => (p.id === project.id ? { ...p, files: { ...p.files, [name]: text } } : p)));
+
+  // Names the writer turned back into plain text (false positives), kept in intent.json.
+  const noLink = useMemo(() => {
+    try {
+      return new Set<string>((JSON.parse(project.files["intent.json"] || "{}").noLink ?? []).map((n: string) => n.toLowerCase()));
+    } catch {
+      return new Set<string>();
+    }
+  }, [project.files]);
+
+  const setNoLink = (name: string, on: boolean) => {
+    const settings = JSON.parse(project.files["intent.json"] || "{}");
+    const list: string[] = (settings.noLink ?? []).filter((n: string) => n.toLowerCase() !== name.toLowerCase());
+    if (on) list.push(name);
+    settings.noLink = list;
+    setFile("intent.json", JSON.stringify(settings, null, 2));
+  };
+
+  // Change what a sheet is (a Place that was really a Character): same fields, new kind and file.
+  const changeKind = (f: string, kind: SheetKind) => {
+    const entry = ok?.sheets.find((x) => x.file === f);
+    if (!entry) return;
+    const to = sheetFileName(kind, entry.sheet.name);
+    const text = project.files[f].replace(/^(\s*)@\w+/, `$1@${kind}`);
+    setProjects((list) => list.map((p) => {
+      if (p.id !== project.id) return p;
+      const files = { ...p.files };
+      delete files[f];
+      files[to] = text;
+      return { ...p, files };
+    }));
+    if (sheetFile === f) setSheetFile(to);
+    if (file === f) setFileName(to);
+    say(`${entry.sheet.name} is now a ${SHEET_KINDS[kind].label}`);
+  };
+
+  // Every name that has a sheet, plus minigames the scripts mention that have none yet.
+  const links = useMemo<LinkTarget[]>(() => {
+    if (!ok) return [];
+    const out: LinkTarget[] = ok.sheets.flatMap(({ file: f, sheet }) => sheetNames(sheet).map((name) => ({ name, kind: sheet.kind, file: f })));
+    const have = new Set(ok.sheets.filter((x) => x.sheet.kind === "minigame").map((x) => x.sheet.name.toLowerCase()));
+    const seen = new Set<string>();
+    for (const [f, text] of Object.entries(project.files)) {
+      if (!f.endsWith(".intent")) continue;
+      for (const g of detectMinigames(text)) {
+        if (have.has(g.toLowerCase()) || seen.has(g.toLowerCase())) continue;
+        seen.add(g.toLowerCase());
+        out.push({ name: g, kind: "minigame", file: sheetFileName("minigame", g), stub: true });
+      }
+    }
+    return out.filter((l) => !noLink.has(l.name.toLowerCase()));
+  }, [ok, project.files, noLink]);
+
+  const openSheet = (f: string) => {
+    setSheetFile(f);
+    setTab("sheet");
+    setMobile("preview");
+  };
+
+  const createSheet = (kind: SheetKind, name: string, open = true) => {
+    const f = sheetFileName(kind, name);
+    if (project.files[f] === undefined) setFile(f, newSheet(kind, name, file.endsWith(".intent") ? `First written about in ${file}, line ${cursorLine}.` : undefined));
+    if (open) openSheet(f);
+    say(`${SHEET_KINDS[kind].label} sheet: ${name}`);
+  };
+
+  const sheetUsageFor = (f: string) => {
+    const entry = ok?.sheets.find((x) => x.file === f);
+    return entry && ok ? sheetUsage(entry.sheet, ok.scripts) : null;
+  };
+
+  const openLink = (t: LinkTarget) => (t.stub ? createSheet(t.kind as SheetKind, t.name) : openSheet(t.file));
 
   // What the preview shows: the scene or block under the cursor.
   const focus = useMemo(() => {
@@ -120,13 +201,17 @@ export function App() {
   const startConvert = () => {
     if (!draftAtCursor || !ok) return;
     const names = ok.scripts.flatMap((s) => s.blocks.filter((b) => b.kind === "npc").map((b) => b.name));
-    const c = draftToScript(draftAtCursor.prose, ok.config, names);
+    const c = draftToScript(draftAtCursor.prose, ok.config, names, ok.sheets.map((x) => x.sheet));
     setConverting({ ...draftAtCursor, ...c });
   };
 
   const acceptConvert = () => {
     if (!converting) return;
     update(applyConversion(source, converting.line, converting.script));
+    for (const g of detectMinigames(converting.script)) {
+      const f = sheetFileName("minigame", g);
+      if (project.files[f] === undefined) setFile(f, newSheet("minigame", g, `First written about in ${file}.`));
+    }
     setJump({ line: converting.line, n: Date.now() });
     setConverting(null);
     say("Draft converted. The prose is kept below as was-draft.");
@@ -148,6 +233,25 @@ export function App() {
     setProjects((list) => list.map((p) => (p.id === project.id ? { ...p, files: { ...p.files, [n]: "# New chapter\n## First scene\n\n" } } : p)));
     setFileName(n);
   };
+
+  // Files picked from disk join the current project; sheets go to their kind's folder.
+  const addFiles = (incoming: Record<string, string>) => {
+    const named = Object.entries(incoming).map(([n, text]) => {
+      const kind = text.trimStart().match(/^@(character|place|item|minigame)\s+(.+)/);
+      return [kind ? sheetFileName(kind[1] as SheetKind, kind[2].trim()) : n, text] as const;
+    });
+    if (!named.length) return;
+    setProjects((list) => list.map((p) => (p.id === project.id ? { ...p, files: { ...p.files, ...Object.fromEntries(named) } } : p)));
+    setFileName(named[0][0]);
+    say(named.length > 1 ? `Opened ${named.length} files` : `Opened ${named[0][0].split("/").pop()}`);
+  };
+  const importFiles = async () => addFiles(await openFiles());
+
+  // Double-clicking a .intent file on Windows opens the app with it.
+  useEffect(() => {
+    launchFile().then((f) => f && addFiles({ [f.name]: f.text }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addProject = () => {
     const name = prompt("Project name", "My game");
@@ -174,6 +278,7 @@ export function App() {
           <img className="brand-icon" src={theme.brand.icon} alt={theme.brand.name} />
           <span className="brand-divider" aria-hidden="true" />
           <span className="brand-product">{theme.brand.product}</span>
+          <span className="brand-version" title={`Version ${__APP_VERSION__}`}>{__APP_VERSION__.replace(/\.0$/, "")}</span>
         </div>
         <select className="project-picker" value={project.id} onChange={(e) => { setProjectId(e.target.value); setFileName(firstScript(projects.find((p) => p.id === e.target.value)!)); }} aria-label="Project">
           {projects.map((p) => (
@@ -195,7 +300,7 @@ export function App() {
           <button className="ghost" onClick={addFile} title="New script">+ script</button>
         </div>
         <ul className="files">
-          {Object.keys(project.files).sort((a, b) => (a === "intent.json" ? 1 : b === "intent.json" ? -1 : a.localeCompare(b))).map((f) => (
+          {Object.keys(project.files).filter((f) => !f.endsWith(".sheet")).sort((a, b) => (a === "intent.json" ? 1 : b === "intent.json" ? -1 : a.localeCompare(b))).map((f) => (
             <li key={f}>
               <button className={f === file ? "active" : ""} onClick={() => { setFileName(f); setMobile("write"); }}>
                 {f === "intent.json" ? "⚙ Project settings" : f}
@@ -203,8 +308,40 @@ export function App() {
             </li>
           ))}
         </ul>
+        <div className="side-head">
+          Sheets
+          <span className="spacer" />
+          <select className="ghost add-sheet" value="" aria-label="New sheet" onChange={(e) => { const k = e.target.value as SheetKind; e.target.value = ""; const n = k && prompt(`New ${SHEET_KINDS[k].label.toLowerCase()} name`); if (k && n) createSheet(k, n.trim()); }}>
+            <option value="">+ sheet</option>
+            {(Object.keys(SHEET_KINDS) as SheetKind[]).map((k) => <option key={k} value={k}>{SHEET_KINDS[k].label}</option>)}
+          </select>
+        </div>
+        {(Object.keys(SHEET_KINDS) as SheetKind[]).map((k) => {
+          const mine = (ok?.sheets ?? []).filter((x) => x.sheet.kind === k).sort((a, b) => Number(isStub(b.sheet)) - Number(isStub(a.sheet)) || a.sheet.name.localeCompare(b.sheet.name));
+          const stubs = links.filter((l) => l.stub && l.kind === k);
+          if (!mine.length && !stubs.length) return null;
+          return (
+            <div key={k} className="sheet-group">
+              <div className="sheet-group-head"><i className={`kind-dot k-${k}`} />{SHEET_KINDS[k].plural}</div>
+              <ul className="files">
+                {stubs.map((l) => (
+                  <li key={l.name}><button className="stub" onClick={() => createSheet(k, l.name)} title="Mentioned in your script. Click to make its sheet">{l.name}<span className="badge">new</span></button></li>
+                ))}
+                {mine.map(({ file: f, sheet }) => (
+                  <li key={f}>
+                    <button className={f === file || f === sheetFile ? "active" : ""} onClick={() => { setFileName(f); setRawSheet(false); setMobile("write"); }}>
+                      {sheet.name}{isStub(sheet) && <span className="badge">to design</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
         <div className="side-actions">
           <button className="ghost" onClick={addProject}>New project</button>
+          <button className="ghost" onClick={importFiles}>Open .intent file</button>
+          {!file.endsWith(".json") && <button className="ghost" onClick={async () => { if (await saveFileAs(file, project.files[file] ?? "")) say(`Saved ${file.split("/").pop()}`); }}>Save as file</button>}
           {isTauri() && (
             <>
               <button className="ghost" onClick={async () => { const p = await openFolder(); if (p) { setProjects((l) => [...l.filter((x) => x.id !== p.id), p]); setProjectId(p.id); setFileName(firstScript(p)); } }}>Open folder</button>
@@ -227,7 +364,14 @@ export function App() {
       </aside>
 
       <main className="main">
-        {!file.endsWith(".json") && (
+        {file.endsWith(".sheet") && (
+          <div className="toolbar" role="toolbar" aria-label="Sheet">
+            <span className="label">Edit as:</span>
+            <button className={rawSheet ? "" : "on"} onClick={() => setRawSheet(false)}>Form</button>
+            <button className={rawSheet ? "on" : ""} onClick={() => setRawSheet(true)}>Text</button>
+          </div>
+        )}
+        {file.endsWith(".intent") && (
           <div className="toolbar" role="toolbar" aria-label="Layers">
             {draftAtCursor ? (
               <button className="convert" onClick={startConvert} data-testid="convert">Convert draft to script</button>
@@ -239,6 +383,17 @@ export function App() {
             <button onClick={() => insertBlock("mv")}><span className="layer-dot" style={{ background: "var(--block)" }} />MV code</button>
           </div>
         )}
+        {file.endsWith(".sheet") && !rawSheet ? (
+          <div className="sheet-scroll">
+            <SheetForm
+              key={file}
+              text={project.files[file] ?? ""}
+              usage={sheetUsageFor(file)}
+              onChange={update}
+              onJump={(f, line) => { setFileName(f); setJump({ line, n: Date.now() }); }}
+            />
+          </div>
+        ) : (
         <Editor
           docKey={`${project.id}/${file}`}
           value={project.files[file] ?? ""}
@@ -248,7 +403,11 @@ export function App() {
           onChange={update}
           onCursorLine={setCursorLine}
           jumpTo={jump}
+          links={links}
+          onOpenLink={openLink}
+          onContext={setMenu}
         />
+        )}
         {diagnostics.filter((d) => d.level !== "info").length > 0 && (
           <div className="problems">
             {diagnostics.filter((d) => d.level !== "info").map((d, k) => (
@@ -263,16 +422,25 @@ export function App() {
       {sideOpen && (
         <section className="panel">
           <nav className="tabs" role="tablist">
-            {(["play", "book", "renpy", "mv", "report", "bible"] as Tab[]).map((t) => (
+            {([...(sheetFile && project.files[sheetFile] !== undefined ? ["sheet"] : []), "play", "book", "renpy", "mv", "report", "bible"] as Tab[]).map((t) => (
               <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-                {{ play: "Play", book: "Book", renpy: "Ren'Py", mv: "RPG Maker MV", report: "Report", bible: "Bible" }[t]}
+                {{ sheet: `◆ ${ok?.sheets.find((x) => x.file === sheetFile)?.sheet.name ?? "Sheet"}`, play: "Play", book: "Book", renpy: "Ren'Py", mv: "RPG Maker MV", report: "Report", bible: "Bible" }[t]}
               </button>
             ))}
           </nav>
           <div className="panel-body" data-testid="panel">
             {"error" in result ? (
               <div className="error-box">Project settings can't be read: {result.error}</div>
-            ) : tab === "play" || tab === "book" ? (
+            ) : tab === "sheet" && sheetFile && project.files[sheetFile] !== undefined ? (
+              <SheetForm
+                key={sheetFile}
+                text={project.files[sheetFile]}
+                usage={sheetUsageFor(sheetFile)}
+                onChange={(t) => setFile(sheetFile, t)}
+                onJump={(f, line) => { setFileName(f); setJump({ line, n: Date.now() }); setMobile("write"); }}
+                onClose={() => { setSheetFile(null); setTab("play"); }}
+              />
+            ) : tab === "play" || tab === "book" || tab === "sheet" ? (
               focus ? (
                 tab === "book" ? (
                   <BookView title={focus.title} nodes={focus.nodes} cfg={result.config} />
@@ -309,6 +477,50 @@ export function App() {
         ))}
       </nav>
 
+      {menu && (
+        <div className="ctx-back" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}>
+          <div className="ctx-menu" role="menu" style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 220) }} onClick={(e) => e.stopPropagation()}>
+            {menu.link && !menu.link.stub ? (
+              <>
+                <div className="ctx-title">“{menu.text}” · {SHEET_KINDS[menu.link.kind as SheetKind].label}</div>
+                <button role="menuitem" onClick={() => { openSheet(menu.link!.file); setMenu(null); }}>
+                  <i className={`kind-dot k-${menu.link.kind}`} />Open sheet
+                </button>
+                <button role="menuitem" onClick={() => { setNoLink(menu.text, true); setMenu(null); say(`“${menu.text}” is plain text now. Undo in Project settings (noLink).`); }}>
+                  <i className="kind-dot" />Plain text, not a link
+                </button>
+                <div className="ctx-sep">Change type to</div>
+                {(Object.keys(SHEET_KINDS) as SheetKind[]).filter((k) => k !== menu.link!.kind).map((k) => (
+                  <button key={k} role="menuitem" onClick={() => { changeKind(menu.link!.file, k); setMenu(null); }}>
+                    <i className={`kind-dot k-${k}`} />{SHEET_KINDS[k].label}
+                  </button>
+                ))}
+              </>
+            ) : menu.link?.stub ? (
+              <>
+                <div className="ctx-title">“{menu.text}” · no sheet yet</div>
+                {(Object.keys(SHEET_KINDS) as SheetKind[]).map((k) => (
+                  <button key={k} role="menuitem" onClick={() => { createSheet(k, menu.text); setMenu(null); }}>
+                    <i className={`kind-dot k-${k}`} />Create {SHEET_KINDS[k].label}…
+                  </button>
+                ))}
+                <button role="menuitem" onClick={() => { setNoLink(menu.text, true); setMenu(null); }}>
+                  <i className="kind-dot" />Plain text, not a link
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="ctx-title">“{menu.text}”</div>
+                {(Object.keys(SHEET_KINDS) as SheetKind[]).map((k) => (
+                  <button key={k} role="menuitem" onClick={() => { createSheet(k, menu.text); setMenu(null); }}>
+                    <i className={`kind-dot k-${k}`} />Create {SHEET_KINDS[k].label}…
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      )}
       {converting && (
         <div className="modal-back" onClick={() => setConverting(null)}>
           <div className="modal wide" role="dialog" aria-label="Convert draft" onClick={(e) => e.stopPropagation()}>
@@ -431,7 +643,7 @@ function Settings({ prefs, setPrefs, theme, onClose }: { prefs: UiPrefs; setPref
         </div>
         <footer className="about">
           <img src={theme.brand.logo} alt={theme.brand.name} />
-          <span>{theme.brand.product} 0.1 · {theme.brand.tagline}</span>
+          <span>{theme.brand.product} {__APP_VERSION__} · {theme.brand.tagline}</span>
         </footer>
       </div>
     </div>

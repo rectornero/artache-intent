@@ -5,7 +5,7 @@ import { EditorView, highlightActiveLine, keymap, lineNumbers } from "@codemirro
 import { json } from "./jsonMode.ts";
 import { useEffect, useRef } from "react";
 import type { Diagnostic } from "../src/core/ast.ts";
-import { intentLanguage, intentLinter, layerStripes } from "./intentMode.ts";
+import { intentLanguage, intentLinter, layerStripes, refreshLinks, sheetLinks, type LinkTarget } from "./intentMode.ts";
 
 interface Props {
   docKey: string;
@@ -16,16 +16,26 @@ interface Props {
   onChange: (v: string) => void;
   onCursorLine: (line: number) => void;
   jumpTo: { line: number; n: number } | null;
+  links?: LinkTarget[];
+  onOpenLink?: (t: LinkTarget) => void;
+  /** Right-click or long-press: the selection, or the linked name or word under the pointer. */
+  onContext?: (info: { x: number; y: number; text: string; link?: LinkTarget }) => void;
 }
 
-export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, jumpTo }: Props) {
+export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, jumpTo, links = [], onOpenLink, onContext }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const diags = useRef(diagnostics);
   const cb = useRef({ onChange, onCursorLine });
   const wrapComp = useRef(new Compartment());
+  const linkRef = useRef(links);
+  const openRef = useRef(onOpenLink);
   diags.current = diagnostics;
   cb.current = { onChange, onCursorLine };
+  linkRef.current = links;
+  openRef.current = onOpenLink;
+  const ctxRef = useRef(onContext);
+  ctxRef.current = onContext;
 
   useEffect(() => {
     const v = new EditorView({
@@ -37,8 +47,27 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
           history(),
           highlightActiveLine(),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-          isJson ? json() : [intentLanguage(), layerStripes(), intentLinter(() => diags.current)],
+          isJson ? json() : [intentLanguage(), layerStripes(), intentLinter(() => diags.current), sheetLinks(() => linkRef.current, (t) => openRef.current?.(t))],
           wrapComp.current.of(wrap ? EditorView.lineWrapping : []),
+          EditorView.domEventHandlers({
+            contextmenu(e, view) {
+              if (!ctxRef.current || isJson) return false;
+              const el = (e.target as HTMLElement).closest("[data-sheet]");
+              const link = el ? linkRef.current.find((x) => x.name.toLowerCase() === el.getAttribute("data-sheet")) : undefined;
+              const sel = view.state.selection.main;
+              let text = sel.empty ? "" : view.state.sliceDoc(sel.from, sel.to);
+              if (!text && !link) {
+                const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+                const w = pos === null ? null : view.state.wordAt(pos);
+                if (w) text = view.state.sliceDoc(w.from, w.to);
+              }
+              text = text.trim().replace(/\s+/g, " ").replace(/^[“"'‘]+|[”"'’.,;:!?]+$/g, "");
+              if (!link && (!text || text.length > 40)) return false;
+              e.preventDefault();
+              ctxRef.current({ x: e.clientX, y: e.clientY, text: link?.name ?? text, link });
+              return true;
+            },
+          }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) cb.current.onChange(u.state.doc.toString());
             if (u.selectionSet || u.docChanged) cb.current.onCursorLine(u.state.doc.lineAt(u.state.selection.main.head).number);
@@ -61,6 +90,11 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
     if (!v || v.state.doc.toString() === value) return;
     v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value } });
   }, [value]);
+
+  const linkKey = links.map((l) => `${l.name}|${l.stub ? 1 : 0}`).join(",");
+  useEffect(() => {
+    view.current?.dispatch({ effects: refreshLinks.of(null) });
+  }, [linkKey]);
 
   useEffect(() => {
     if (view.current && !isJson) forceLinting(view.current);

@@ -116,3 +116,35 @@ and common event ids, known ids by name).
   `MapEvents.intent.json` (map events that call them), `System.intent.json` (names for
   every switch and variable used).
 - **Both**: `REPORT.md` per engine and `bible.json`.
+
+## Sheets (0.2)
+
+A sheet is one plain-text file per Character, Place, Item or Minigame, kept in
+`characters/`, `places/`, `items/` or `minigames/`. The app shows it as a form.
+
+```
+@character Tony
+
+## Identity
+nicknames: the neighbour
+pronouns: he
+
+## Look
+appearance: Forties, ironed shirt.
+  A watch he keeps touching.
+expressions: neutral, nervous
+```
+
+- First line: `@character|@place|@item|@minigame Name`. Then `key: value` lines;
+  indented lines continue the value above. `##` headings are only for reading.
+- Character sheets join the cast (cast key = `id` or the name in capitals);
+  nicknames become aliases. Place sheets add backgrounds under every name.
+  Anything written in `intent.json` wins over a sheet.
+- Usage (scenes, spoken lines, expressions asked for but missing, never used) is
+  worked out from the scripts and never stored.
+- Names on a sheet are underlined in the editor. Minigames mentioned in prose
+  ("an Investigation minigame") without a sheet show as stubs.
+- `noLink` in `intent.json` lists names that stay plain text.
+- Draft conversion reads sheets: nicknames and pronouns pick speakers, place
+  names add `[BG …]` and the place's `[MUSIC …]`, minigame phrases add
+  `>> MINIGAME: Name`.

@@ -1,6 +1,7 @@
 import type { Diagnostic, Script } from "./core/ast.ts";
 import { loadConfig, type ProjectConfig } from "./core/config.ts";
 import { parseScript } from "./core/parser.ts";
+import { backgroundsFromSheets, castFromSheets, parseSheet, type Sheet } from "./core/sheets.ts";
 import { buildBible } from "./exporters/bible.ts";
 import { exportMv } from "./exporters/mv.ts";
 import { exportRenpy } from "./exporters/renpy.ts";
@@ -9,6 +10,8 @@ import { reportMarkdown } from "./exporters/report.ts";
 export interface CompileResult {
   config: ProjectConfig;
   scripts: Script[];
+  /** `.sheet` files by file name. */
+  sheets: Array<{ file: string; sheet: Sheet }>;
   diagnostics: Array<Diagnostic & { file: string }>;
   /** Output path -> file contents. */
   files: Record<string, string>;
@@ -16,9 +19,26 @@ export interface CompileResult {
 
 /** Turn a project (settings + script files) into engine files. Pure: no disk access. */
 export function compileProject(settings: unknown, sources: Record<string, string>, targets?: Array<"renpy" | "mv">): CompileResult {
-  const config = loadConfig(settings as Record<string, unknown>);
-  const scripts = Object.entries(sources).map(([file, src]) => parseScript(src, config, file));
-  const diagnostics = scripts.flatMap((s) => s.diagnostics.map((d) => ({ ...d, file: s.file })));
+  const sheets: CompileResult["sheets"] = [];
+  const sheetErrors: CompileResult["diagnostics"] = [];
+  for (const [file, src] of Object.entries(sources).filter(([f]) => f.endsWith(".sheet"))) {
+    const sheet = parseSheet(src);
+    if (sheet) sheets.push({ file, sheet });
+    else sheetErrors.push({ level: "error", line: 1, message: "A sheet starts with @character, @place, @item or @minigame and a name", file });
+  }
+  // Sheets fill the cast and backgrounds; anything written in intent.json wins.
+  const s0 = (settings ?? {}) as Record<string, any>;
+  const fromSheets = castFromSheets(sheets.map((x) => x.sheet));
+  const merged = {
+    ...s0,
+    cast: Object.fromEntries(
+      [...new Set([...Object.keys(fromSheets), ...Object.keys(s0.cast ?? {})])].map((k) => [k, { ...fromSheets[k], ...(s0.cast?.[k] ?? {}) }]),
+    ),
+    assets: { ...(s0.assets ?? {}), bg: { ...backgroundsFromSheets(sheets.map((x) => x.sheet)), ...(s0.assets?.bg ?? {}) } },
+  };
+  const config = loadConfig(merged);
+  const scripts = Object.entries(sources).filter(([f]) => !f.endsWith(".sheet")).map(([file, src]) => parseScript(src, config, file));
+  const diagnostics = [...sheetErrors, ...scripts.flatMap((s) => s.diagnostics.map((d) => ({ ...d, file: s.file })))];
   const files: Record<string, string> = {};
   const want = targets ?? config.targets;
   if (want.includes("renpy")) {
@@ -34,5 +54,5 @@ export function compileProject(settings: unknown, sources: Record<string, string
     files["mv/REPORT.md"] = reportMarkdown(`${config.name}: RPG Maker MV export`, m.report);
   }
   files["bible.json"] = JSON.stringify(buildBible(scripts), null, 2);
-  return { config, scripts, diagnostics, files };
+  return { config, scripts, sheets, diagnostics, files };
 }

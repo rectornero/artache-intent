@@ -47,16 +47,48 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
-      - name: Install NDK
-        run: sdkmanager --install "ndk;27.0.12077973"
+      - name: Install NDK and the Android 16 SDK (API 36)
+        run: sdkmanager --install "ndk;27.0.12077973" "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
       - name: Build debug APK (sideload; a signed release build needs a keystore secret)
         env:
           NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.0.12077973
         run: |
           npx tauri android init --ci
-          npx tauri android build --apk --debug --ci
+          # Target the latest Android (16, API 36); still installs on Android 7+ (minSdk 24).
+          sed -i -E 's/(compileSdk|targetSdk) = [0-9]+/\1 = 36/' src-tauri/gen/android/app/build.gradle.kts
+          grep -E "compileSdk|targetSdk|minSdk" src-tauri/gen/android/app/build.gradle.kts
+          # arm64 covers every current phone and keeps the APK small.
+          npx tauri android build --apk --debug --ci --target aarch64
       - uses: actions/upload-artifact@v4
         with:
           name: artache-intent-android
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+
+  # Every push to main refreshes one pre-release with the newest exe and APK,
+  # so there is always a single download page.
+  release:
+    needs: [windows, android]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: dist-artifacts }
+      - name: Name the files
+        run: |
+          V=$(node -p "require('./package.json').version")
+          echo "V=$V" >> "$GITHUB_ENV"
+          mkdir out
+          cp "$(find dist-artifacts/artache-intent-android -name '*.apk' | head -1)" "out/Artache-Intent-$V-android-arm64.apk"
+          cp "$(find dist-artifacts/artache-intent-windows -path '*nsis*' -name '*.exe' | head -1)" "out/Artache-Intent-$V-windows-setup.exe"
+          ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.V }}
+          name: Artache Intent ${{ env.V }}
+          prerelease: true
+          files: out/*
+          body: Test build for Windows 10/11 (64-bit) and Android 7 to 16. The APK is a debug build for sideloading.

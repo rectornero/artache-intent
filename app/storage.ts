@@ -62,9 +62,15 @@ export async function openFolder(): Promise<Project | null> {
   const dir = await open({ directory: true });
   if (typeof dir !== "string") return null;
   const files: Record<string, string> = {};
-  for (const e of await fs.readDir(dir)) {
-    if (e.isFile && (e.name.endsWith(".intent") || e.name === "intent.json")) files[e.name] = await fs.readTextFile(`${dir}/${e.name}`);
-  }
+  // Scripts and settings at the top, sheets one folder down (characters/, places/...).
+  const read = async (rel: string, depth: number) => {
+    for (const e of await fs.readDir(rel ? `${dir}/${rel}` : dir)) {
+      const name = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory && depth === 0 && !e.name.startsWith(".") && e.name !== "out") await read(name, 1);
+      else if (e.isFile && (e.name.endsWith(".intent") || e.name.endsWith(".sheet") || name === "intent.json")) files[name] = await fs.readTextFile(`${dir}/${name}`);
+    }
+  };
+  await read("", 0);
   files["intent.json"] ??= JSON.stringify({ name: dir.split(/[\\/]/).pop() }, null, 2);
   return { id: `folder:${dir}`, name: dir.split(/[\\/]/).pop() ?? dir, files, folder: dir };
 }
@@ -72,7 +78,65 @@ export async function openFolder(): Promise<Project | null> {
 export async function saveToFolder(p: Project) {
   if (!p.folder) return;
   const fs = await import("@tauri-apps/plugin-fs");
-  for (const [name, text] of Object.entries(p.files)) await fs.writeTextFile(`${p.folder}/${name}`, text);
+  for (const [name, text] of Object.entries(p.files)) {
+    if (name.includes("/")) await fs.mkdir(`${p.folder}/${name.slice(0, name.lastIndexOf("/"))}`, { recursive: true });
+    await fs.writeTextFile(`${p.folder}/${name}`, text);
+  }
+}
+
+function download(name: string, blob: Blob) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+/** Save one script or sheet as its own file: a save dialog in the app, a download in the browser. */
+export async function saveFileAs(name: string, text: string): Promise<boolean> {
+  const base = name.split("/").pop()!;
+  if (isTauri()) {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const fs = await import("@tauri-apps/plugin-fs");
+    const ext = base.split(".").pop()!;
+    const path = await save({ defaultPath: base, filters: [{ name: ext === "sheet" ? "Intent sheet" : "Intent script", extensions: [ext] }] });
+    if (!path) return false;
+    await fs.writeTextFile(path, text);
+    return true;
+  }
+  download(base, new Blob([text], { type: "text/plain;charset=utf-8" }));
+  return true;
+}
+
+/** Pick .intent / .sheet files from disk and return them by name. */
+export async function openFiles(): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  if (isTauri()) {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const fs = await import("@tauri-apps/plugin-fs");
+    const picked = await open({ multiple: true, filters: [{ name: "Intent files", extensions: ["intent", "sheet"] }] });
+    for (const p of Array.isArray(picked) ? picked : picked ? [picked] : []) out[p.split(/[\\/]/).pop()!] = await fs.readTextFile(p);
+    return out;
+  }
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = ".intent,.sheet";
+    input.onchange = async () => {
+      for (const f of Array.from(input.files ?? [])) out[f.name] = await f.text();
+      resolve(out);
+    };
+    input.click();
+  });
+}
+
+/** The file the desktop app was opened with, if any. */
+export async function launchFile(): Promise<{ name: string; text: string } | null> {
+  if (!isTauri()) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  const r = await invoke<[string, string] | null>("opened_file").catch(() => null);
+  return r ? { name: r[0].split(/[\\/]/).pop()!, text: r[1] } : null;
 }
 
 /** Exports: a folder on desktop/Android, a zip download in the browser. */
@@ -91,10 +155,5 @@ export async function deliverExport(name: string, files: Record<string, string>)
   }
   const zip = new JSZip();
   for (const [path, text] of Object.entries(files)) zip.file(path, text);
-  const blob = await zip.generateAsync({ type: "blob" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${name.replace(/[^\w-]+/g, "-")}-export.zip`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  download(`${name.replace(/[^\w-]+/g, "-")}-export.zip`, await zip.generateAsync({ type: "blob" }));
 }

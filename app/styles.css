@@ -172,7 +172,9 @@ pre.code.wrap { white-space: pre-wrap; }
   .mobile-nav button.active { color: var(--accent); box-shadow: inset 0 2px 0 var(--accent); }
   .brand-logo, .brand-divider, .brand-product { display: none; }
   .brand-icon { display: block; }
-  .project-picker { margin-left: 4px; max-width: 46vw; }
+  .project-picker { margin-left: 4px; max-width: none; min-width: 0; flex: 1 1 auto; }
+  .topbar { gap: 8px; padding: 0 10px; }
+  .topbar .spacer { display: none; }
   .status { display: none; }
 }
 
@@ -212,3 +214,58 @@ pre.code.wrap { white-space: pre-wrap; }
 .modal-actions button { padding: 7px 16px; border-radius: 999px; border: 1px solid var(--border); }
 .modal.wide { width: min(980px, 100%); }
 @media (max-width: 820px) { .convert-grid { grid-template-columns: 1fr; } }
+
+/* Sheets: kinds keep one colour everywhere (sidebar dot, underline, menu). */
+.k-character { --kind: var(--speaker); }
+.k-place { --kind: var(--stage); }
+.k-item { --kind: var(--block); }
+.k-minigame { --kind: var(--accent); }
+.kind-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: var(--kind, var(--border)); vertical-align: 1px; flex: none; }
+
+.editor .cm-sheet-link { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; cursor: text; }
+.editor .cm-sheet-character { text-decoration-color: color-mix(in srgb, var(--speaker) 70%, transparent); }
+.editor .cm-sheet-place { text-decoration-color: color-mix(in srgb, var(--stage) 70%, transparent); }
+.editor .cm-sheet-item { text-decoration-color: color-mix(in srgb, var(--block) 70%, transparent); }
+.editor .cm-sheet-minigame { text-decoration-color: color-mix(in srgb, var(--accent) 70%, transparent); }
+.editor .cm-sheet-stub { text-decoration-style: dotted; text-decoration-color: var(--accent); }
+
+.sheet-group { margin-bottom: 4px; }
+.sheet-group-head { display: flex; align-items: center; font-size: 12px; color: var(--muted); padding: 6px 14px 2px; }
+.files button .badge, .sheet-head .badge { margin-left: 8px; }
+.badge { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); vertical-align: 1px; white-space: nowrap; }
+.files button.stub { color: var(--muted); font-style: italic; }
+select.add-sheet { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 2px 4px; border-radius: 6px; }
+select.add-sheet:hover { background: var(--panel2); color: var(--text); }
+.toolbar button.on { background: var(--text); color: var(--panel); border-color: var(--text); }
+
+.sheet-scroll { flex: 1; min-height: 0; overflow: auto; padding: 22px clamp(16px, 4vw, 48px) 48px; }
+.sheet { max-width: 760px; margin: 0 auto; }
+.sheet-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.sheet-kind { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--kind); border: 1px solid color-mix(in srgb, var(--kind) 40%, transparent); padding: 3px 9px; border-radius: 999px; }
+.sheet-name { flex: 1; min-width: 0; font-family: var(--font-display); font-size: 26px; font-weight: 600; border: 0; background: transparent; color: var(--text); padding: 2px 0; border-bottom: 1px solid transparent; }
+.sheet-name:focus { outline: none; border-bottom-color: var(--border); }
+.sheet-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px 16px; margin-bottom: 12px; }
+.panel .sheet-card { background: var(--bg); }
+.sheet-card h4 { margin: 0 0 8px; font-size: 13px; font-weight: 700; }
+.sheet-card.closed h4 { margin: 0; }
+.sec-toggle { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.sec-toggle .caret { color: var(--muted); width: 10px; }
+.sheet-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 14px; }
+.sheet-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.sheet-fields label.long { grid-column: 1 / -1; }
+.sheet-fields input, .sheet-fields textarea, .sheet-card textarea.notes { font: inherit; font-size: 14px; color: var(--text); background: var(--panel2); border: 1px solid transparent; border-radius: 10px; padding: 8px 10px; resize: vertical; }
+.sheet-card textarea.notes { width: 100%; }
+.sheet-fields input:focus, .sheet-fields textarea:focus, .sheet-card textarea.notes:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+.sheet-card.usage { background: color-mix(in srgb, var(--kind, var(--accent)) 5%, var(--panel)); }
+.usage-scenes { display: flex; flex-wrap: wrap; gap: 6px; }
+.usage p { margin: 8px 0 0; font-size: 13px; }
+.warn-text { color: var(--warning); }
+
+.ctx-back { position: fixed; inset: 0; z-index: 50; }
+.ctx-menu { position: fixed; min-width: 210px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 32px rgba(10, 17, 40, .18); padding: 6px; display: flex; flex-direction: column; }
+.ctx-menu button { display: flex; align-items: center; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 8px; font: inherit; font-size: 14px; color: var(--text); cursor: pointer; }
+.ctx-menu button:hover, .ctx-menu button:focus-visible { background: var(--panel2); outline: none; }
+.ctx-title { font-size: 12px; color: var(--muted); padding: 6px 10px 4px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-sep { font-size: 11px; color: var(--muted); padding: 8px 10px 2px; border-top: 1px solid var(--border); margin-top: 4px; }
+.brand-version { font-family: var(--font-ui); font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 999px; padding: 1px 7px; margin-left: 2px; align-self: center; }
+.sheet-fields input::placeholder, .sheet-fields textarea::placeholder, .sheet-card textarea.notes::placeholder { color: var(--muted); opacity: .65; font-style: italic; }

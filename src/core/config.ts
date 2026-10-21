@@ -96,7 +96,7 @@ export function defaultConfig(): ProjectConfig {
     quotedVoice: null,
     positions: { ...DEFAULT_POSITIONS },
     assets: { bg: {}, cg: {}, music: {}, sound: {} },
-    blocks: { DRAFT: { export: false } },
+    blocks: { DRAFT: { export: false }, MINIGAME: {} },
     aliases: {},
     renpy: { voiceAsId: "{speaker}_as_{as}", memory: {}, labelPrefix: "" },
     mv: {

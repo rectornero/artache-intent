@@ -3,8 +3,8 @@
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
 import { linter, type Diagnostic as CmDiagnostic } from "@codemirror/lint";
 import { tags as t } from "@lezer/highlight";
-import { RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
-import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
+import { RangeSetBuilder, StateEffect, StateField, type Extension } from "@codemirror/state";
+import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import type { Diagnostic } from "../src/core/ast.ts";
 
 interface St {
@@ -95,4 +95,62 @@ export function layerStripes(): Extension {
     update: (d, tr) => (tr.docChanged ? stripes(tr.state.doc) : d),
     provide: (f) => EditorView.decorations.from(f),
   });
+}
+
+/** A name in the text that belongs to a sheet; `stub` names have no sheet yet. */
+export interface LinkTarget {
+  name: string;
+  kind: string;
+  file: string;
+  stub?: boolean;
+}
+
+export const refreshLinks = StateEffect.define<null>();
+
+/** Underlines sheet names as you type. Ctrl/Cmd-click opens the sheet. */
+export function sheetLinks(get: () => LinkTarget[], open: (t: LinkTarget) => void): Extension {
+  const build = (view: EditorView): DecorationSet => {
+    const targets = get();
+    const b = new RangeSetBuilder<Decoration>();
+    if (!targets.length) return b.finish();
+    const byName = new Map(targets.map((t) => [t.name.toLowerCase(), t]));
+    const esc = [...byName.keys()].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const re = new RegExp(`(?<![\\w'’])(${esc.join("|")})(?![\\w'’])`, "gi");
+    for (const { from, to } of view.visibleRanges) {
+      const text = view.state.doc.sliceString(from, to);
+      for (const m of text.matchAll(re)) {
+        const t = byName.get(m[1].toLowerCase())!;
+        const start = from + m.index!;
+        b.add(start, start + m[1].length, Decoration.mark({
+          class: `cm-sheet-link cm-sheet-${t.stub ? "stub" : t.kind}`,
+          attributes: { "data-sheet": t.name.toLowerCase(), title: t.stub ? `${t.name}: no sheet yet. Ctrl-click to make one` : `${t.name} (${t.kind}). Ctrl-click to open the sheet` },
+        }));
+      }
+    }
+    return b.finish();
+  };
+  const plugin = ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) {
+        this.decorations = build(view);
+      }
+      update(u: ViewUpdate) {
+        if (u.docChanged || u.viewportChanged || u.transactions.some((tr) => tr.effects.some((e) => e.is(refreshLinks)))) this.decorations = build(u.view);
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
+  const click = EditorView.domEventHandlers({
+    mousedown(e) {
+      if (!(e.ctrlKey || e.metaKey)) return false;
+      const el = (e.target as HTMLElement).closest("[data-sheet]");
+      const t = el && get().find((x) => x.name.toLowerCase() === el.getAttribute("data-sheet"));
+      if (!t) return false;
+      e.preventDefault();
+      open(t);
+      return true;
+    },
+  });
+  return [plugin, click];
 }

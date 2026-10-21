@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Artache Intent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.artache.intent",
   "build": {
     "frontendDist": "../dist",
@@ -11,13 +11,57 @@
   },
   "app": {
     "windows": [
-      { "title": "Artache Intent", "width": 1360, "height": 860, "minWidth": 380, "minHeight": 500 }
+      {
+        "title": "Artache Intent",
+        "width": 1360,
+        "height": 860,
+        "minWidth": 380,
+        "minHeight": 500
+      }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "intent"
+        ],
+        "name": "Intent Script",
+        "description": "Artache Intent script",
+        "role": "Editor",
+        "mimeType": "text/x-intent"
+      },
+      {
+        "ext": [
+          "sheet"
+        ],
+        "name": "Intent Sheet",
+        "description": "Artache Intent sheet",
+        "role": "Editor",
+        "mimeType": "text/x-intent-sheet"
+      }
+    ],
+    "android": {
+      "minSdkVersion": 24
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    }
   }
 }

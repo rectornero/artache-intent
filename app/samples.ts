@@ -4,8 +4,16 @@ import limoutCap1 from "../examples/limout/cap1.intent?raw";
 import cqSettings from "../examples/contraryquest/intent.json?raw";
 import cqPrologue from "../examples/contraryquest/prologue.intent?raw";
 
+// Sheets ship with the samples: examples/limout/characters/tony.sheet -> characters/tony.sheet
+const limoutSheets = Object.fromEntries(
+  Object.entries(import.meta.glob("../examples/limout/**/*.sheet", { query: "?raw", import: "default", eager: true }) as Record<string, string>).map(([k, v]) => [
+    k.replace("../examples/limout/", ""),
+    v,
+  ]),
+);
+
 export const SAMPLES: Project[] = [
-  { id: "sample-limout", name: "Liminal Outliers (sample)", files: { "intent.json": limoutSettings, "cap1.intent": limoutCap1 } },
+  { id: "sample-limout", name: "Liminal Outliers (sample)", files: { "intent.json": limoutSettings, "cap1.intent": limoutCap1, ...limoutSheets } },
   { id: "sample-cq", name: "ContraryQuest (sample)", files: { "intent.json": cqSettings, "prologue.intent": cqPrologue } },
 ];
 

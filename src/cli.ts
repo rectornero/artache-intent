@@ -1,6 +1,7 @@
 #!/usr/bin/env -S npx tsx
 // intent <project-dir> [-o out-dir] [--target renpy|mv]
-// A project dir holds intent.json (settings) and *.intent script files.
+// A project dir holds intent.json (settings), *.intent script files and
+// *.sheet files (at the top or in characters/, places/, items/, minigames/).
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { compileProject } from "./project.ts";
@@ -16,7 +17,8 @@ const target = args.includes("--target") ? [args[args.indexOf("--target") + 1] a
 
 const settings = JSON.parse(readFileSync(join(dir, "intent.json"), "utf8"));
 const sources: Record<string, string> = {};
-for (const f of readdirSync(dir).filter((f) => f.endsWith(".intent")).sort()) sources[f] = readFileSync(join(dir, f), "utf8");
+for (const f of readdirSync(dir, { recursive: true }).map(String).filter((f) => !f.startsWith("out") && (f.endsWith(".intent") || f.endsWith(".sheet"))).sort())
+  sources[f.replace(/\\/g, "/")] = readFileSync(join(dir, f), "utf8");
 
 const result = compileProject(settings, sources, target);
 for (const [path, text] of Object.entries(result.files)) {

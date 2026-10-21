@@ -1,0 +1,14 @@
+@place Stairwell
+
+## Identity
+nicknames: the landing, the stairs
+
+## Look
+description: White marble, ninety-six steps, a neon tube that flickers twice.
+variants: day, night
+
+## Sound
+music: building
+
+## Game
+bg: stairwell
