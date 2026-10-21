@@ -123,8 +123,9 @@ export function App() {
     <div className={`app side-${prefs.sidePanel} ${prefs.showOutline ? "" : "no-outline"} m-${mobile}`}>
       <header className="topbar">
         <div className="brand" title={`${theme.brand.name} ${theme.brand.product}`}>
-          <span className="mark">{theme.brand.mark}</span>
-          <span className="brand-name">{theme.brand.name}</span>
+          <img className="brand-logo" src={theme.brand.logo} alt={theme.brand.name} />
+          <img className="brand-icon" src={theme.brand.icon} alt={theme.brand.name} />
+          <span className="brand-divider" aria-hidden="true" />
           <span className="brand-product">{theme.brand.product}</span>
         </div>
         <select className="project-picker" value={project.id} onChange={(e) => { setProjectId(e.target.value); setFileName(firstScript(projects.find((p) => p.id === e.target.value)!)); }} aria-label="Project">
@@ -219,7 +220,10 @@ export function App() {
                   <PreviewNodes nodes={focus.nodes} cfg={result.config} />
                 </div>
               ) : (
-                <p className="muted">Open a script and start writing. The scene under your cursor shows here.</p>
+                <div className="empty">
+                  <img src={theme.brand.icon} alt="" />
+                  <p>Start writing. The scene under your cursor shows here.</p>
+                </div>
               )
             ) : tab === "renpy" ? (
               <pre className="code">{script ? result.files[`renpy/${slug(script.file.replace(/\.[^.]+$/, ""))}.rpy`] ?? "" : result.files["renpy/intent_defs.rpy"]}</pre>
@@ -295,6 +299,7 @@ function Settings({ prefs, setPrefs, theme, onClose }: { prefs: UiPrefs; setPref
           {[...THEMES, ...(prefs.custom ? [prefs.custom] : [])].map((t) => (
             <button key={t.id} className={`theme-card ${prefs.themeId === t.id ? "active" : ""}`} onClick={() => setPrefs({ ...prefs, themeId: t.id })}
               style={{ background: t.colors.bg, color: t.colors.text, borderColor: prefs.themeId === t.id ? t.colors.accent : t.colors.border }}>
+              <img src={t.brand.logo} alt="" />
               <span className="swatches">
                 {[t.colors.accent, t.colors.speaker, t.colors.stage, t.colors.block].map((c) => <i key={c} style={{ background: c }} />)}
               </span>
@@ -307,7 +312,9 @@ function Settings({ prefs, setPrefs, theme, onClose }: { prefs: UiPrefs; setPref
           <div className="form-grid">
             <label>Brand name<input value={custom.brand.name} onChange={(e) => setCustom({ ...custom, brand: { ...custom.brand, name: e.target.value } })} /></label>
             <label>Product name<input value={custom.brand.product} onChange={(e) => setCustom({ ...custom, brand: { ...custom.brand, product: e.target.value } })} /></label>
-            <label>Mark<input maxLength={2} value={custom.brand.mark} onChange={(e) => setCustom({ ...custom, brand: { ...custom.brand, mark: e.target.value } })} /></label>
+            <label>Tagline<input value={custom.brand.tagline} onChange={(e) => setCustom({ ...custom, brand: { ...custom.brand, tagline: e.target.value } })} /></label>
+            <label>Logo<input type="file" accept="image/*" onChange={(e) => readImage(e.target.files?.[0], (logo) => setCustom({ ...custom, brand: { ...custom.brand, logo } }))} /></label>
+            <label>Icon<input type="file" accept="image/*" onChange={(e) => readImage(e.target.files?.[0], (icon) => setCustom({ ...custom, brand: { ...custom.brand, icon } }))} /></label>
             <label>Dark<input type="checkbox" checked={custom.dark} onChange={(e) => setCustom({ ...custom, dark: e.target.checked })} /></label>
             {(Object.keys(custom.colors) as Array<keyof Theme["colors"]>).map((k) => (
               <label key={k}>{k}<input type="color" value={custom.colors[k]} onChange={(e) => setCustom({ ...custom, colors: { ...custom.colors, [k]: e.target.value } })} /></label>
@@ -329,7 +336,18 @@ function Settings({ prefs, setPrefs, theme, onClose }: { prefs: UiPrefs; setPref
           <label>Show outline<input type="checkbox" checked={prefs.showOutline} onChange={(e) => setPrefs({ ...prefs, showOutline: e.target.checked })} /></label>
           <label>Wrap long lines<input type="checkbox" checked={prefs.wrap} onChange={(e) => setPrefs({ ...prefs, wrap: e.target.checked })} /></label>
         </div>
+        <footer className="about">
+          <img src={theme.brand.logo} alt={theme.brand.name} />
+          <span>{theme.brand.product} 0.1 · {theme.brand.tagline}</span>
+        </footer>
       </div>
     </div>
   );
+}
+
+function readImage(file: File | undefined, done: (dataUrl: string) => void) {
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = () => typeof r.result === "string" && done(r.result);
+  r.readAsDataURL(file);
 }
