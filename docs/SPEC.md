@@ -199,3 +199,7 @@ Settings → Claude → **Copy and paste**, or simply no key. Every ✦ action (
 
 - Intent backs up every project on the device (IndexedDB) every ten minutes while it changes, keeping the newest 15. Tools → Backups lists them: **Restore** (the current text becomes a backup first, and Undo is offered) or **Save file**.
 - **Save ▾ → Project file** writes the whole project as one `.intentproj` file (a zip with `intent.project.json`). **Open ▾ → Project file** opens it on any device; a newer copy of the same project replaces it, and the old one goes to Backups.
+
+## Assets (0.3)
+
+Export → Assets lists every background, CG, sprite, song and sound the Ren'Py export uses, with the scripts that use it. **Link game folder** (Windows and Android apps; remembered per project on that device) or **Check a folder** (browser; nothing is uploaded) matches them against the game's files the way Ren'Py does: `game/images/**/bg hall.png` is the image `bg hall`, a sprite shown by its tag alone matches any image of that tag, and `game/audio/**/guest.ogg` is the sound `guest`. Missing assets show the file name to add; images no script uses are listed too. Assets are never copied into the project.

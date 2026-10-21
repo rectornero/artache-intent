@@ -33,12 +33,14 @@ import { deliverExport, whenSaveFails, isTauri, launchFile, loadPrefs, loadProje
 import { CLAUDE_FILES } from "./claudeCode.ts";
 import { ConnectClaude } from "./ConnectClaude.tsx";
 import { BackupsPanel } from "./BackupsPanel.tsx";
+import { AssetsPanel } from "./AssetsPanel.tsx";
+import { assetsFromRenpy } from "../src/core/assets.ts";
 import { EVERY_MS, saveBackup, sameFiles, type Backup } from "./backups.ts";
 import { pack, unpack } from "../src/core/pack.ts";
 import { diskChanges, mergeDisk } from "../src/core/folder.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPrefs } from "./themes.ts";
 
-type Tab = "sheet" | "play" | "book" | "search" | "checks" | "backups" | "renpy" | "mv" | "report" | "bible" | "history";
+type Tab = "sheet" | "play" | "book" | "search" | "checks" | "backups" | "assets" | "renpy" | "mv" | "report" | "bible" | "history";
 type MobileView = "files" | "write" | "preview";
 type ToastAction = { label: string; run: () => void };
 
@@ -46,10 +48,10 @@ type ToastAction = { label: string; run: () => void };
 const PANEL_GROUPS: Array<{ id: string; label: string; icon: string; tabs: Tab[] }> = [
   { id: "read", label: "Read", icon: "story", tabs: ["play", "book"] },
   { id: "find", label: "Find", icon: "search", tabs: ["search"] },
-  { id: "export", label: "Export", icon: "engine", tabs: ["report", "mv", "renpy"] },
+  { id: "export", label: "Export", icon: "engine", tabs: ["assets", "report", "mv", "renpy"] },
   { id: "tools", label: "Tools", icon: "data", tabs: ["checks", "history", "backups", "bible"] },
 ];
-const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", search: "Find", checks: "Story check", backups: "Backups", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
+const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", search: "Find", checks: "Story check", backups: "Backups", assets: "Assets", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
 
 function safeCompile(p: Project): CompileResult | { error: string } {
   try {
@@ -610,15 +612,25 @@ export function App() {
     setFileName(firstScript(p));
   };
 
-  const doExport = async () => {
-    if (!ok) return say("Fix intent.json first");
-    // Code you edited and kept in sync with Play goes into the export as it is.
+  // What Export writes: Code you edited and kept in sync with Play goes out as it is.
+  const exportFiles = useMemo(() => {
+    if (!ok) return null;
     const files = { ...ok.files };
     for (const f of Object.keys(project.files).filter((n) => n.endsWith(".intent"))) {
       const code = project.files[versionFile(f, "renpy")];
       if (code !== undefined && inSync(pairState(project.files, f, "play", "renpy"))) files[`renpy/${slug(f.replace(/\.[^.]+$/, ""))}.rpy`] = code;
     }
-    await deliverExport(project.name, files);
+    return files;
+  }, [ok, project.files]);
+  const assets = useMemo(() => {
+    if (!exportFiles) return [];
+    const scriptOf = new Map(Object.keys(project.files).filter((n) => n.endsWith(".intent")).map((f) => [`renpy/${slug(f.replace(/\.[^.]+$/, ""))}.rpy`, f]));
+    return assetsFromRenpy(Object.fromEntries(Object.entries(exportFiles).filter(([n]) => scriptOf.has(n))), (n) => scriptOf.get(n) ?? n);
+  }, [exportFiles, project.files]);
+
+  const doExport = async () => {
+    if (!ok || !exportFiles) return say("Fix intent.json first");
+    await deliverExport(project.name, exportFiles);
     say(isTauri() ? "Exported" : "Export downloaded");
   };
 
@@ -862,6 +874,8 @@ export function App() {
                 onDraftPrompt={draftPrompt}
                 onRename={(n) => renameSheetTo(sheetFile, n)}
               />
+            ) : tab === "assets" ? (
+              <AssetsPanel project={project.id} assets={assets} onOpen={(f) => { setFileName(f); setMobile("write"); }} />
             ) : tab === "backups" ? (
               <BackupsPanel project={project.id} version={backupVersion} onBackUpNow={() => void backUp(project, true)} onRestore={restoreBackup}
                 onSaveFile={(b) => void saveAsProjectFile(b.files, `${b.name} ${new Date(b.at).toISOString().slice(0, 16).replace("T", " ").replace(":", "")}`)}

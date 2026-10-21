@@ -217,3 +217,61 @@ export async function openProjectFile(): Promise<Uint8Array | null> {
     input.click();
   });
 }
+
+/** Every file under a game folder (relative paths), skipping Ren'Py's caches and saves. */
+export async function listFolderFiles(dir: string): Promise<string[]> {
+  const fs = await import("@tauri-apps/plugin-fs");
+  const out: string[] = [];
+  const skip = new Set(["cache", "saves", ".git", "node_modules", "__pycache__", "tmp"]);
+  const walk = async (rel: string, depth: number) => {
+    if (depth > 8 || out.length > 20000) return;
+    for (const e of await fs.readDir(rel ? `${dir}/${rel}` : dir)) {
+      const name = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory && !skip.has(e.name)) await walk(name, depth + 1);
+      else if (e.isFile) out.push(name);
+    }
+  };
+  await walk("", 0);
+  return out;
+}
+
+/** A displayable URL for a file on disk (for previews). Revoke it when done. */
+export async function fileUrl(path: string): Promise<string> {
+  const fs = await import("@tauri-apps/plugin-fs");
+  return URL.createObjectURL(new Blob([(await fs.readFile(path)) as BlobPart]));
+}
+
+/** In the browser: pick a folder and get its files by relative path (nothing is uploaded). */
+export function pickFolderFiles(): Promise<Map<string, File> | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.setAttribute("webkitdirectory", "");
+    input.onchange = () => {
+      const files = Array.from(input.files ?? []);
+      resolve(files.length ? new Map(files.map((f) => [f.webkitRelativePath || f.name, f])) : null);
+    };
+    input.click();
+  });
+}
+
+const GAME_KEY = "intent.gameFolders";
+/** The game folder linked to each project, on this device only (paths differ between devices). */
+export function gameFolderOf(project: string): string | null {
+  try {
+    return JSON.parse(safeGet(GAME_KEY) ?? "{}")[project] ?? null;
+  } catch {
+    return null;
+  }
+}
+export function setGameFolder(project: string, dir: string | null) {
+  let all: Record<string, string> = {};
+  try {
+    all = JSON.parse(safeGet(GAME_KEY) ?? "{}");
+  } catch {
+    // Start over.
+  }
+  if (dir) all[project] = dir;
+  else delete all[project];
+  safeSet(GAME_KEY, JSON.stringify(all));
+}
