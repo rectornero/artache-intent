@@ -129,8 +129,9 @@ A sheet is one plain-text file per Character, Place, Item or Minigame, kept in
 
 Draft, Play and Ren'Py show the same file. Draft shows dialogue as prose and `::: draft`
 passages as plain text, without fences. New or edited prose stays as written in a
-`::: draft` passage while you're in Draft; leaving the tab converts every draft passage
-in the file at once, and the message that follows offers Undo. In a draft passage, one line is one
+`::: draft` passage. Tabs only switch views: pressing ✦ Convert with Claude (shown when
+there is prose to convert) converts every draft passage in the file and shows the result
+next to the prose for review; nothing changes until you accept, and Undo follows. In a draft passage, one line is one
 paragraph.
 
 Claude does the converting, on the writer's own Anthropic API key (Settings → Claude;

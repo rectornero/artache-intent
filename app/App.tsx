@@ -98,10 +98,9 @@ export function App() {
     setView({ ...activeView, text });
     update(fromLayer(activeView.v, text, ok.config));
   };
-  // Claude converts the file's draft passages: from the ✦ button (with a
-  // review before anything changes), or when the writer leaves Draft
-  // (applied at once, with Undo). Without a key, passages stay as prose.
-  const convertDrafts = async (review = false) => {
+  // Claude converts the file's draft passages when the writer presses ✦, and
+  // shows the result for review before anything changes. Tabs only switch views.
+  const convertDrafts = async () => {
     const src = project.files[file] ?? "";
     // Only passages with real, new prose count: empty ones and the starter hint stay put.
     const all = ok && file.endsWith(".intent") ? draftBlocks(src) : [];
@@ -110,7 +109,6 @@ export function App() {
     const blocks = all.filter((b, k) => real[k] && reused[k] === null);
     if (!ok || !real.some(Boolean)) return;
     let scripts: Array<string | null> = reused;
-    let note = "Converted again from last time, no new Claude call.";
     if (blocks.length) {
       const n = blocks.length;
       const what = `${n} draft passage${n > 1 ? "s" : ""}`;
@@ -124,7 +122,6 @@ export function App() {
         const fresh = await claudeConvert(apiKey, model, blocks.map((b) => b.prose), ok.config, ok.sheets.map((x) => x.sheet), before);
         let next = 0;
         scripts = all.map((b, k) => (!real[k] ? null : reused[k] ?? fresh[next++]));
-        note = `Claude converted ${what}.`;
       } catch (e) {
         say(`Claude couldn't convert: ${explainFailure(e)}. Your prose is unchanged.`, 8000);
         return;
@@ -132,8 +129,7 @@ export function App() {
         setBusy(null);
       }
     }
-    if (review) setReviewing({ src, items: all.flatMap((b, k) => (scripts[k] === null ? [] : [{ k, prose: b.prose, script: scripts[k]! }])), scripts });
-    else applyConversion(src, scripts, note);
+    setReviewing({ src, items: all.flatMap((b, k) => (scripts[k] === null ? [] : [{ k, prose: b.prose, script: scripts[k]! }])), scripts });
   };
   const applyConversion = (src: string, scripts: Array<string | null>, note: string) => {
     update(replaceDrafts(src, scripts));
@@ -144,9 +140,8 @@ export function App() {
     setView(null);
     say(note, 8000, { label: "Undo", run: () => { update(src); setView(null); setLayer("draft"); } });
   };
-  const switchLayer = async (l: Layer) => {
+  const switchLayer = (l: Layer) => {
     if (busy) return;
-    if (l !== "draft") await convertDrafts();
     setView(null);
     setLayer(l);
   };
@@ -423,7 +418,7 @@ export function App() {
         {file.endsWith(".intent") && (
           <div className="toolbar" role="toolbar" aria-label="Layers">
             {pendingDrafts > 0 && (
-              <button className="claude-go" onClick={() => { if (!busy) void convertDrafts(true); }} disabled={!!busy} title={apiKey ? "Turn new prose into script with Claude" : "Add your Claude key in Settings first"} data-testid="convert-claude">
+              <button className="claude-go" onClick={() => { if (!busy) void convertDrafts(); }} disabled={!!busy} title={apiKey ? "Turn new prose into script with Claude" : "Add your Claude key in Settings first"} data-testid="convert-claude">
                 <span aria-hidden="true">✦</span> Convert with Claude <span className="count">{pendingDrafts}</span>
               </button>
             )}
@@ -435,7 +430,7 @@ export function App() {
               ))}
             </div>
             {layer !== "play" ? (
-              <span className="label">{layer === "draft" ? "Write as prose. Press ✦ or change tab to turn it into script." : "Edit the code. Lines Intent can't read stay as Ren'Py blocks."}</span>
+              <span className="label">{layer === "draft" ? "Write as prose. Press ✦ to turn it into script." : "Edit the code. Lines Intent can't read stay as Ren'Py blocks."}</span>
             ) : (
               <span className="label">Add a layer:</span>
             )}
@@ -716,7 +711,7 @@ function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, setModel, 
         <h3>Claude</h3>
         <div className="claude-key">
           <p className="muted">
-            With your Anthropic API key, Claude turns draft passages into script when you press ✦ or change tab. Without it, drafts stay as prose. The key stays on this
+            With your Anthropic API key, Claude turns draft passages into script when you press ✦ Convert with Claude. Without it, drafts stay as prose. The key stays on this
             device: it is never saved in your project or its exports. Get one at console.anthropic.com → API keys.
           </p>
           {apiKey ? (
