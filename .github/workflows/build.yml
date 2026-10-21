@@ -43,16 +43,19 @@ jobs:
         with: { node-version: 22, cache: npm }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
-      - uses: android-actions/setup-android@v3
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      # The runner ships the Android SDK; add the NDK and the Android 16 SDK (API 36).
       - name: Install NDK and the Android 16 SDK (API 36)
-        run: sdkmanager --install "ndk;27.0.12077973" "platforms;android-36" "build-tools;36.0.0"
+        run: |
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" --install "ndk;27.0.12077973" "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
       - name: Build debug APK (sideload; a signed release build needs a keystore secret)
         env:
-          NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.0.12077973
+          NDK_HOME: /usr/local/lib/android/sdk/ndk/27.0.12077973
         run: |
           npx tauri android init --ci
           # Target the latest Android (16, API 36); still installs on Android 7+ (minSdk 24).
