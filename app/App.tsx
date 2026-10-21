@@ -6,7 +6,7 @@ import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
 import { toLayer, type Layer } from "../src/core/layers.ts";
 import { CLAUDE_MODELS, claudeUpdate, explainFailure, loadApiKey, loadModel, saveApiKey, saveModel, type ClaudeModel } from "./claude.ts";
-import { isVersionFile, markSynced, neighbours, pairOf, pairState, inSync, readSync, SYNC_FILE, versionFile, type Version } from "../src/core/sync.ts";
+import { isVersionFile, markSynced, neighbours, pairOf, pairState, inSync, readSync, SYNC_FILE, versionFile, type PairState, type Version } from "../src/core/sync.ts";
 import { lineDiff } from "../src/core/diff.ts";
 
 const VERSION_NAMES: Record<Version, string> = { draft: "Draft", play: "Play", renpy: "Code" };
@@ -27,6 +27,14 @@ import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPref
 type Tab = "sheet" | "play" | "book" | "renpy" | "mv" | "report" | "bible" | "history";
 type MobileView = "files" | "write" | "preview";
 type ToastAction = { label: string; run: () => void };
+
+// The right panel: three groups instead of a row of tabs. Ren'Py code lives in the Code version.
+const PANEL_GROUPS: Array<{ id: string; label: string; icon: string; tabs: Tab[] }> = [
+  { id: "read", label: "Read", icon: "story", tabs: ["play", "book"] },
+  { id: "export", label: "Export", icon: "engine", tabs: ["report", "mv", "renpy"] },
+  { id: "tools", label: "Tools", icon: "data", tabs: ["history", "bible"] },
+];
+const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
 
 function safeCompile(p: Project): CompileResult | { error: string } {
   try {
@@ -65,6 +73,7 @@ export function App() {
   const [apiKey, setApiKey] = useState(loadApiKey);
   const [model, setModel] = useState<ClaudeModel>(loadModel);
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [reviewing, setReviewing] = useState<{ projectId: string; play: string; from: Version; to: Version; before: string; after: string; fromText: string } | null>(null);
 
   useEffect(() => {
@@ -348,8 +357,18 @@ export function App() {
         <span className={`status ${errors ? "bad" : warnings ? "warn" : "good"}`} data-testid="status">
           {"error" in result ? "Settings error" : errors ? `${errors} error${errors > 1 ? "s" : ""}` : warnings ? `${warnings} warning${warnings > 1 ? "s" : ""}` : "Ready"}
         </span>
-        <button className="primary" onClick={doExport} data-testid="export">Export</button>
-        <button className="icon" onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings">⚙</button>
+        <button className="primary wide-only" onClick={doExport} data-testid="export">Export</button>
+        <button className="icon wide-only" onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings">⚙</button>
+        <div className="more phone-only">
+          <button className="icon" onClick={() => setMoreOpen(!moreOpen)} aria-label="More" aria-expanded={moreOpen}>⋯</button>
+          {moreOpen && (
+            <div className="more-menu" role="menu" onClick={() => setMoreOpen(false)}>
+              <button role="menuitem" onClick={doExport}>Export</button>
+              <button role="menuitem" onClick={() => setSettingsOpen(true)}>Settings</button>
+              <span className="more-version">{theme.brand.product} {__APP_VERSION__}</span>
+            </div>
+          )}
+        </div>
       </header>
 
       <aside className="sidebar">
@@ -401,13 +420,13 @@ export function App() {
           <Icon name="project" />Project
         </div>
         <div className="side-actions">
-          <button className="ghost" onClick={addProject}>New project</button>
-          <button className="ghost" onClick={importFiles}>Open .intent file</button>
-          {!file.endsWith(".json") && <button className="ghost" onClick={async () => { if (await saveFileAs(file, project.files[file] ?? "")) say(`Saved ${file.split("/").pop()}`); }}>Save as file</button>}
+          <button className="side-btn" onClick={addProject}>New project</button>
+          <button className="side-btn" onClick={importFiles}>Open file</button>
+          {!file.endsWith(".json") && <button className="side-btn" onClick={async () => { if (await saveFileAs(file, project.files[file] ?? "")) say(`Saved ${file.split("/").pop()}`); }}>Save as file</button>}
           {isTauri() && (
             <>
-              <button className="ghost" onClick={async () => { const p = await openFolder(); if (p) { setProjects((l) => [...l.filter((x) => x.id !== p.id), p]); setProjectId(p.id); setFileName(firstScript(p)); } }}>Open folder</button>
-              {project.folder && <button className="ghost" onClick={async () => { await saveToFolder(project); say("Saved"); }}>Save to folder</button>}
+              <button className="side-btn" onClick={async () => { const p = await openFolder(); if (p) { setProjects((l) => [...l.filter((x) => x.id !== p.id), p]); setProjectId(p.id); setFileName(firstScript(p)); } }}>Open folder</button>
+              {project.folder && <button className="side-btn" onClick={async () => { await saveToFolder(project); say("Saved"); }}>Save to folder</button>}
             </>
           )}
         </div>
@@ -443,29 +462,38 @@ export function App() {
                 </button>
               ))}
             </div>
-            {layer === "play" && <span className="label">Add a layer:</span>}
-            {layer === "play" && <>
-            <button onClick={() => insertBlock("draft")}><span className="layer-dot" style={{ background: "var(--speaker)" }} />Draft</button>
-            <button onClick={() => insertBlock("renpy")}><span className="layer-dot" style={{ background: "var(--block)" }} />Ren'Py code</button>
-            <button onClick={() => insertBlock("mv")}><span className="layer-dot" style={{ background: "var(--block)" }} />MV code</button>
-            </>}
-          </div>
-        )}
-        {isScript && states.filter(({ s }) => !s.missing && !inSync(s)).map(({ n, s }) => (
-          <div key={n} className="sync-bar" role="status" data-testid={`sync-${n}`}>
-            <i className="sync-dot" />
-            <span>
-              {s.there && s.here ? `This ${VERSION_NAMES[layer]} and ${VERSION_NAMES[n]} were both edited since they were last in sync.`
-                : s.there ? `${VERSION_NAMES[n]} has changes that aren't in this ${VERSION_NAMES[layer]}.`
-                : `Your changes here aren't in ${VERSION_NAMES[n]} yet.`}
-            </span>
-            {s.there ? (
-              <button className="claude-go" disabled={!!busy} onClick={() => void syncVersions(n, layer)}>✦ Update {VERSION_NAMES[layer]} from {VERSION_NAMES[n]}</button>
-            ) : (
-              <button className="claude-go" disabled={!!busy} onClick={() => void syncVersions(layer, n)}>✦ Update {VERSION_NAMES[n]}</button>
+            {layer === "play" && (
+              <select className="insert-menu" value="" aria-label="Insert" onChange={(e) => { const k = e.target.value as "draft" | "renpy" | "mv"; e.target.value = ""; if (k) insertBlock(k); }}>
+                <option value="">+ Insert</option>
+                <option value="draft">Prose passage</option>
+                <option value="renpy">Ren'Py code block</option>
+                <option value="mv">MV code block</option>
+              </select>
             )}
           </div>
-        ))}
+        )}
+        {isScript && states.some(({ s }) => !s.missing && !inSync(s)) && (
+          <div className="sync-bar" role="status" data-testid="sync-bar">
+            <i className="sync-dot" />
+            <span>
+              {(() => {
+                const off = states.filter(({ s }) => !s.missing && !inSync(s));
+                const names = (f: (s: PairState) => boolean) => off.filter(({ s }) => f(s)).map(({ n }) => VERSION_NAMES[n]);
+                const both = names((s) => s.here && s.there), newer = names((s) => s.there && !s.here), behindHere = names((s) => s.here && !s.there);
+                return [
+                  both.length ? `${both.join(" and ")} and this ${VERSION_NAMES[layer]} were both edited.` : "",
+                  newer.length ? `${newer.join(" and ")} ${newer.length > 1 ? "have" : "has"} newer changes.` : "",
+                  behindHere.length ? `${behindHere.join(" and ")} ${behindHere.length > 1 ? "don't" : "doesn't"} have your changes yet.` : "",
+                ].filter(Boolean).join(" ");
+              })()}
+            </span>
+            {states.filter(({ s }) => !s.missing && !inSync(s)).map(({ n, s }) => s.there ? (
+              <button key={n} className="claude-go" disabled={!!busy} data-testid={`sync-${n}`} onClick={() => void syncVersions(n, layer)}>✦ Update from {VERSION_NAMES[n]}</button>
+            ) : (
+              <button key={n} className="claude-go" disabled={!!busy} data-testid={`sync-${n}`} onClick={() => void syncVersions(layer, n)}>✦ Update {VERSION_NAMES[n]}</button>
+            ))}
+          </div>
+        )}
         {file.endsWith(".sheet") && !rawSheet ? (
           <div className="sheet-scroll">
             <SheetForm
@@ -505,12 +533,24 @@ export function App() {
       {sideOpen && (
         <section className="panel">
           <nav className="tabs" role="tablist">
-            {([...(sheetFile && project.files[sheetFile] !== undefined ? ["sheet"] : []), "play", "book", "renpy", "mv", "report", "bible", "history"] as Tab[]).map((t) => (
-              <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-                {{ sheet: `◆ ${ok?.sheets.find((x) => x.file === sheetFile)?.sheet.name ?? "Sheet"}`, play: "Preview", book: "Book", renpy: "Ren'Py", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" }[t]}
+            {sheetFile && project.files[sheetFile] !== undefined && (
+              <button role="tab" aria-selected={tab === "sheet"} className={tab === "sheet" ? "active" : ""} onClick={() => setTab("sheet")}>
+                ◆ {ok?.sheets.find((x) => x.file === sheetFile)?.sheet.name ?? "Sheet"}
+              </button>
+            )}
+            {PANEL_GROUPS.map((g) => (
+              <button key={g.id} role="tab" aria-selected={g.tabs.includes(tab)} className={g.tabs.includes(tab) ? "active" : ""} onClick={() => setTab(g.tabs.includes(tab) ? tab : g.tabs[0])}>
+                <Icon name={g.icon} size={14} />{g.label}
               </button>
             ))}
           </nav>
+          {PANEL_GROUPS.filter((g) => g.tabs.includes(tab) && g.tabs.length > 1).map((g) => (
+            <div key={g.id} className="subtabs" role="tablist">
+              {g.tabs.map((t) => (
+                <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{TAB_NAMES[t]}</button>
+              ))}
+            </div>
+          ))}
           <div className="panel-body" data-testid="panel">
             {"error" in result ? (
               <div className="error-box">Project settings can't be read: {result.error}</div>

@@ -83,7 +83,7 @@ function stripes(doc: { lines: number; line: (n: number) => { from: number; text
     const t = line.text.trim();
     const open = t.match(/^:::\s*(draft|renpy|mv|was-draft)\s*$/);
     if (!kind && open) kind = open[1];
-    if (kind) b.add(line.from, line.from, Decoration.line({ class: `cm-ilayer cm-ilayer-${kind}` }));
+    if (kind) b.add(line.from, line.from, Decoration.line({ class: `cm-ilayer cm-ilayer-${kind}${open || t === ":::" ? " cm-ilayer-fence" : ""}` }));
     if (kind && t === ":::" ) kind = null;
   }
   return b.finish();
