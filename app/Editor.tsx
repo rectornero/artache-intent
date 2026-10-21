@@ -54,11 +54,12 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
               if (!ctxRef.current || isJson) return false;
               const el = (e.target as HTMLElement).closest("[data-sheet]");
               const link = el ? linkRef.current.find((x) => x.name.toLowerCase() === el.getAttribute("data-sheet")) : undefined;
+              // The selection when the click is on it, otherwise the word under the pointer.
               const sel = view.state.selection.main;
-              let text = sel.empty ? "" : view.state.sliceDoc(sel.from, sel.to);
-              if (!text && !link) {
-                const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
-                const w = pos === null ? null : view.state.wordAt(pos);
+              const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }, false);
+              let text = !sel.empty && pos >= sel.from && pos <= sel.to ? view.state.sliceDoc(sel.from, sel.to) : "";
+              if (!text.trim() && !link) {
+                const w = view.state.wordAt(pos);
                 if (w) text = view.state.sliceDoc(w.from, w.to);
               }
               text = text.trim().replace(/\s+/g, " ").replace(/^[“"'‘]+|[”"'’.,;:!?]+$/g, "");
