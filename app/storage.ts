@@ -62,13 +62,10 @@ export function savePrefs<T>(p: T) {
   safeSet("intent.ui", JSON.stringify(p));
 }
 
-export async function openFolder(): Promise<Project | null> {
-  const { open } = await import("@tauri-apps/plugin-dialog");
+/** Every Intent file in a project folder: scripts and settings at the top, sheets one folder down. */
+export async function readFolder(dir: string): Promise<Record<string, string>> {
   const fs = await import("@tauri-apps/plugin-fs");
-  const dir = await open({ directory: true });
-  if (typeof dir !== "string") return null;
   const files: Record<string, string> = {};
-  // Scripts and settings at the top, sheets one folder down (characters/, places/...).
   const read = async (rel: string, depth: number) => {
     for (const e of await fs.readDir(rel ? `${dir}/${rel}` : dir)) {
       const name = rel ? `${rel}/${e.name}` : e.name;
@@ -79,17 +76,37 @@ export async function openFolder(): Promise<Project | null> {
   await read("", 0);
   // Draft and Code versions only belong to a script next to them; other .rpy files aren't Intent's.
   for (const n of Object.keys(files)) if (/\.(draft|rpy)$/.test(n) && files[n.replace(/\.(draft|rpy)$/, ".intent")] === undefined) delete files[n];
+  return files;
+}
+
+export async function openFolder(): Promise<Project | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const dir = await open({ directory: true });
+  if (typeof dir !== "string") return null;
+  const files = await readFolder(dir);
   files["intent.json"] ??= JSON.stringify({ name: dir.split(/[\\/]/).pop() }, null, 2);
   return { id: `folder:${dir}`, name: dir.split(/[\\/]/).pop() ?? dir, files, folder: dir };
 }
 
-export async function saveToFolder(p: Project) {
-  if (!p.folder) return;
+/** Writes the given files, and removes the ones Intent deleted. */
+export async function writeFolder(dir: string, files: Record<string, string>, removed: string[] = []) {
   const fs = await import("@tauri-apps/plugin-fs");
-  for (const [name, text] of Object.entries(p.files)) {
-    if (name.includes("/")) await fs.mkdir(`${p.folder}/${name.slice(0, name.lastIndexOf("/"))}`, { recursive: true });
-    await fs.writeTextFile(`${p.folder}/${name}`, text);
+  for (const [name, text] of Object.entries(files)) {
+    if (name.includes("/")) await fs.mkdir(`${dir}/${name.slice(0, name.lastIndexOf("/"))}`, { recursive: true });
+    await fs.writeTextFile(`${dir}/${name}`, text);
   }
+  for (const name of removed) await fs.remove(`${dir}/${name}`).catch(() => undefined);
+}
+
+export async function saveToFolder(p: Project) {
+  if (p.folder) await writeFolder(p.folder, p.files);
+}
+
+/** Pick an empty or existing folder to keep a project in. */
+export async function pickFolder(title: string): Promise<string | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const dir = await open({ directory: true, title });
+  return typeof dir === "string" ? dir : null;
 }
 
 function download(name: string, blob: Blob) {

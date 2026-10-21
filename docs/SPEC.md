@@ -183,3 +183,10 @@ Tools → Story check → **✦ Check story**. Claude reads the open script (or,
 ## Claude without an API key (0.3)
 
 Settings → Claude → **Copy and paste**, or simply no key. Every ✦ action (Update, Check story, prompt drafting) opens a three-step card: copy the request, paste it into the Claude app, claude.ai or Claude Code, then paste the answer back. The answer goes through the same review as an API answer.
+
+## Folder projects and Claude Code (0.3, Windows and Android apps)
+
+- **Keep in a folder** moves a project into a folder on disk. Folder projects save there as you type; there's no Save button.
+- **Set up Claude Code** writes `CLAUDE.md` and `INTENT_SPEC.md` into the folder, so Claude Code knows the format, the three versions, the house rules, and how to write story checks.
+- When Intent's window comes back into focus (or on **Reload**), it takes the files changed on disk. A file changed both in Intent and on disk keeps Intent's text; the disk copy goes to History.
+- **Mark as in step** in the sync bar tells Intent that two versions already match, for when they were brought in step by hand or by Claude Code.

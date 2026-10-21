@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DataBlock, Node, Scene } from "../src/core/ast.ts";
 import { conditionText } from "../src/core/condition.ts";
 import { slug } from "../src/core/parser.ts";
@@ -29,7 +29,9 @@ import { saveSnapshot } from "./history.ts";
 import type { LinkTarget } from "./intentMode.ts";
 import { type Sheet, detectMinigames, newSheet, sheetFileName, sheetNames, sheetUsage, SHEET_KINDS, type SheetKind } from "../src/core/sheets.ts";
 import { SAMPLES, newProject } from "./samples.ts";
-import { deliverExport, whenSaveFails, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, savePrefs, saveFileAs, saveProjects, saveToFolder, type Project } from "./storage.ts";
+import { deliverExport, whenSaveFails, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, pickFolder, readFolder, savePrefs, saveFileAs, saveProjects, writeFolder, type Project } from "./storage.ts";
+import { CLAUDE_FILES } from "./claudeCode.ts";
+import { diskChanges, mergeDisk } from "../src/core/folder.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPrefs } from "./themes.ts";
 
 type Tab = "sheet" | "play" | "book" | "search" | "checks" | "renpy" | "mv" | "report" | "bible" | "history";
@@ -101,6 +103,82 @@ export function App() {
     const t = setTimeout(() => saveProjects(projects.filter((p) => !p.folder)), 400);
     return () => clearTimeout(t);
   }, [projects]);
+
+  // Folder projects save themselves to disk as you type. `disk` remembers each file as it is
+  // on disk, so edits made outside Intent (Claude Code, another editor) can be told apart.
+  const disk = useRef<Record<string, Record<string, string>>>({});
+  const latest = useRef(projects);
+  latest.current = projects;
+  useEffect(() => {
+    const t = setTimeout(() => {
+      for (const p of projects.filter((x) => x.folder)) {
+        const base = (disk.current[p.id] ??= {});
+        const { changed, removed } = diskChanges(base, p.files);
+        if (!Object.keys(changed).length && !removed.length) continue;
+        writeFolder(p.folder!, changed, removed).then(
+          () => {
+            Object.assign(base, changed);
+            for (const f of removed) delete base[f];
+          },
+          () => say("Couldn't save to the project folder. Is it still there?", 8000),
+        );
+      }
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
+
+  // Coming back to Intent: take what changed on disk. A file edited both here and on disk keeps
+  // Intent's text (it saves over the disk copy), and the toast says so.
+  const reloadFolder = async (p: Project, quiet = true) => {
+    if (!p.folder) return;
+    let onDisk: Record<string, string>;
+    try {
+      onDisk = await readFolder(p.folder);
+    } catch {
+      return quiet ? undefined : say("Couldn't read the project folder.", 6000);
+    }
+    const cur = latest.current.find((x) => x.id === p.id);
+    if (!cur) return;
+    const { files, base, taken, both } = mergeDisk(disk.current[p.id] ?? {}, cur.files, onDisk);
+    disk.current[p.id] = base;
+    if (taken.length) setProjects((list) => list.map((x) => (x.id === p.id ? { ...x, files } : x)));
+    if (both.length) say(`${both.join(", ")} changed both here and on disk. Intent kept its own text; the disk copy is in History.`, 10000);
+    else if (taken.length) say(`Picked up ${taken.length} change${taken.length > 1 ? "s" : ""} from the folder.`, 5000);
+    else if (!quiet) say("Already up to date with the folder.");
+    for (const f of both) saveSnapshot(p.id, f, onDisk[f], "On disk, edited outside Intent");
+  };
+  useEffect(() => {
+    if (!project.folder) return;
+    const onFocus = () => void reloadFolder(project);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id, project.folder]);
+
+  const keepInFolder = async () => {
+    const dir = await pickFolder("Keep this project in a folder");
+    if (!dir) return;
+    try {
+      await writeFolder(dir, project.files);
+    } catch {
+      return say("Couldn't write to that folder.", 6000);
+    }
+    const moved: Project = { ...project, id: `folder:${dir}`, folder: dir };
+    disk.current[moved.id] = { ...project.files };
+    setProjects((l) => [...l.filter((x) => x.id !== project.id && x.id !== moved.id), moved]);
+    setProjectId(moved.id);
+    say(`${project.name} now lives in ${dir.split(/[\\/]/).pop()} and saves there as you type.`, 8000);
+  };
+  const setUpClaudeCode = async () => {
+    if (!project.folder) return;
+    try {
+      await writeFolder(project.folder, CLAUDE_FILES);
+      say("CLAUDE.md is in the project folder. Open the folder in Claude Code and ask away; Intent picks up its edits when you come back.", 12000);
+    } catch {
+      say("Couldn't write to the project folder.", 6000);
+    }
+  };
 
   const result = useMemo(() => safeCompile(project), [project]);
   const ok = "files" in result ? result : null;
@@ -186,6 +264,16 @@ export function App() {
     say(`${VERSION_NAMES[r.to]} updated.`, 8000, { label: "Undo", run: () => setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files: { ...p.files, [f]: r.before } } : p))) });
   };
   const switchLayer = (l: Layer) => setLayer(l);
+  // The writer (or Claude Code) already brought the versions in step by hand.
+  const markInStep = () => {
+    let files = { ...project.files };
+    for (const { n, s } of states) {
+      if (s.missing || inSync(s)) continue;
+      files = { ...files, [SYNC_FILE]: markSynced(files, file, pairOf(layer, n)!, { [layer]: files[vFile(layer)], [n]: files[vFile(n)] }) };
+    }
+    setProjects((list) => list.map((p) => (p.id === project.id ? { ...p, files } : p)));
+    say("Marked as in step.");
+  };
   const draftPrompt = async (kind: "image" | "song", sheet: Sheet, earlier: string[]) => {
     try {
       return await askClaude(promptJob(kind, sheet, earlier));
@@ -550,8 +638,15 @@ export function App() {
           {!file.endsWith(".json") && <button className="side-btn" onClick={async () => { if (await saveFileAs(file, project.files[file] ?? "")) say(`Saved ${file.split("/").pop()}`); }}>Save as file</button>}
           {isTauri() && (
             <>
-              <button className="side-btn" onClick={async () => { const p = await openFolder(); if (p) { setProjects((l) => [...l.filter((x) => x.id !== p.id), p]); setProjectId(p.id); setFileName(firstScript(p)); } }}>Open folder</button>
-              {project.folder && <button className="side-btn" onClick={async () => { await saveToFolder(project); say("Saved"); }}>Save to folder</button>}
+              <button className="side-btn" onClick={async () => { const p = await openFolder(); if (p) { disk.current[p.id] = { ...p.files }; setProjects((l) => [...l.filter((x) => x.id !== p.id), p]); setProjectId(p.id); setFileName(firstScript(p)); } }}>Open folder</button>
+              {project.folder ? (
+                <>
+                  <button className="side-btn" onClick={() => void reloadFolder(project, false)} title="Take changes made outside Intent">Reload</button>
+                  <button className="side-btn" onClick={() => void setUpClaudeCode()} title="Write a CLAUDE.md so Claude Code can edit this project">Set up Claude Code</button>
+                </>
+              ) : (
+                <button className="side-btn" onClick={() => void keepInFolder()} title="Save this project in a folder on disk, kept up to date as you type">Keep in a folder</button>
+              )}
             </>
           )}
         </div>
@@ -612,6 +707,7 @@ export function App() {
                 ].filter(Boolean).join(" ");
               })()}
             </span>
+            <button className="ghost" title="Both versions already say the same thing: stop flagging them" onClick={() => markInStep()}>Mark as in step</button>
             {states.filter(({ s }) => !s.missing && !inSync(s)).map(({ n, s }) => s.there ? (
               <button key={n} className="claude-go" disabled={!!busy} data-testid={`sync-${n}`} onClick={() => void syncVersions(n, layer)}>✦ Update from {VERSION_NAMES[n]}</button>
             ) : (
