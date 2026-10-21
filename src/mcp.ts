@@ -90,7 +90,7 @@ const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 const numbered = (t: string) => t.split("\n").map((l, k) => `${k + 1}| ${l}`).join("\n");
 
 const server = new McpServer(
-  { name: "artache-intent", version: "0.3.0" },
+  { name: "artache-intent", version: "0.3.1" },
   {
     instructions:
       "Tools for an Artache Intent game script project. Each script has three versions: Play (.intent, Intent Script, the main one), Draft (.draft, prose) and Code (.rpy, Ren'Py). Start with intent_overview, and read intent_format once before writing Intent Script. Never reword the writer's text unless asked. After changing one version, keep its neighbours in step (Draft and Play, Play and Code), then call intent_mark_in_step; if you didn't, say so. Writing a script returns Intent's own problems for it: fix any you caused.",
