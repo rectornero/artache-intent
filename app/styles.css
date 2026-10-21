@@ -269,3 +269,8 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .ctx-sep { font-size: 11px; color: var(--muted); padding: 8px 10px 2px; border-top: 1px solid var(--border); margin-top: 4px; }
 .brand-version { font-family: var(--font-ui); font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 999px; padding: 1px 7px; margin-left: 2px; align-self: center; }
 .sheet-fields input::placeholder, .sheet-fields textarea::placeholder, .sheet-card textarea.notes::placeholder { color: var(--muted); opacity: .65; font-style: italic; }
+.layer-tabs { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--border); margin-right: 6px; flex: none; }
+.toolbar .layer-tabs button { border: 0; padding: 4px 12px; font-weight: 600; color: var(--muted); }
+.toolbar .layer-tabs button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(10, 17, 40, .12); }
+.toolbar .label { overflow: hidden; text-overflow: ellipsis; }
+.view-draft .editor .cm-scroller { font-family: var(--font-preview); font-size: 1.05em; }

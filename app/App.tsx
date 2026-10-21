@@ -5,6 +5,8 @@ import { slug } from "../src/core/parser.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
 import { applyConversion, draftToScript } from "../src/core/convert.ts";
+import { fromLayer, toLayer, type Layer, type LayerView } from "../src/core/layers.ts";
+import { parseScript } from "../src/core/parser.ts";
 import { BookView, PreviewNodes } from "./Preview.tsx";
 import { SheetForm, isStub } from "./SheetForm.tsx";
 import type { LinkTarget } from "./intentMode.ts";
@@ -46,6 +48,9 @@ export function App() {
   const [sheetFile, setSheetFile] = useState<string | null>(null);
   const [rawSheet, setRawSheet] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; text: string; link?: LinkTarget } | null>(null);
+  // Seamless layer tabs: the file seen as Draft, Play (the source) or Ren'Py.
+  const [layer, setLayer] = useState<Layer>("play");
+  const [view, setView] = useState<{ key: string; v: LayerView; text: string } | null>(null);
   const [converting, setConverting] = useState<{ line: number; prose: string; script: string; checks: string[] } | null>(null);
 
   const theme = activeTheme(prefs);
@@ -68,6 +73,27 @@ export function App() {
 
   const update = (text: string) =>
     setProjects((list) => list.map((p) => (p.id === project.id ? { ...p, files: { ...p.files, [file]: text } } : p)));
+
+  const viewKey = `${project.id}/${file}/${layer}`;
+  const activeView = layer !== "play" && view?.key === viewKey ? view : null;
+  // Build the view when the tab or file changes; while typing it stays put.
+  useEffect(() => {
+    if (layer === "play" || !file.endsWith(".intent") || !ok) return;
+    if (view?.key === viewKey) return;
+    const src = project.files[file] ?? "";
+    const v = toLayer(layer, src, parseScript(src, ok.config, file), ok.config);
+    setView({ key: viewKey, v, text: v.text });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewKey, ok]);
+  const editLayer = (text: string) => {
+    if (!activeView || !ok) return;
+    setView({ ...activeView, text });
+    update(fromLayer(activeView.v, text, ok.config, ok.sheets.map((x) => x.sheet)));
+  };
+  const switchLayer = (l: Layer) => {
+    setView(null);
+    setLayer(l);
+  };
 
   const say = (msg: string) => {
     setToast(msg);
@@ -363,7 +389,7 @@ export function App() {
         )}
       </aside>
 
-      <main className="main">
+      <main className={`main view-${activeView ? layer : "play"}`}>
         {file.endsWith(".sheet") && (
           <div className="toolbar" role="toolbar" aria-label="Sheet">
             <span className="label">Edit as:</span>
@@ -373,14 +399,25 @@ export function App() {
         )}
         {file.endsWith(".intent") && (
           <div className="toolbar" role="toolbar" aria-label="Layers">
-            {draftAtCursor ? (
+            <div className="layer-tabs" role="tablist" aria-label="Layer">
+              {(["draft", "play", "renpy"] as Layer[]).map((l) => (
+                <button key={l} role="tab" aria-selected={layer === l} className={layer === l ? "on" : ""} onClick={() => switchLayer(l)} data-testid={`layer-${l}`}>
+                  {{ draft: "Draft", play: "Play", renpy: "Ren'Py" }[l]}
+                </button>
+              ))}
+            </div>
+            {layer !== "play" ? (
+              <span className="label">{layer === "draft" ? "Write as prose. Untouched lines keep their script; edited ones are converted." : "Edit the code. Lines Intent can't read stay as Ren'Py blocks."}</span>
+            ) : draftAtCursor ? (
               <button className="convert" onClick={startConvert} data-testid="convert">Convert draft to script</button>
             ) : (
               <span className="label">Add a layer:</span>
             )}
+            {layer === "play" && <>
             <button onClick={() => insertBlock("draft")}><span className="layer-dot" style={{ background: "var(--speaker)" }} />Draft</button>
             <button onClick={() => insertBlock("renpy")}><span className="layer-dot" style={{ background: "var(--block)" }} />Ren'Py code</button>
             <button onClick={() => insertBlock("mv")}><span className="layer-dot" style={{ background: "var(--block)" }} />MV code</button>
+            </>}
           </div>
         )}
         {file.endsWith(".sheet") && !rawSheet ? (
@@ -395,12 +432,12 @@ export function App() {
           </div>
         ) : (
         <Editor
-          docKey={`${project.id}/${file}`}
-          value={project.files[file] ?? ""}
+          docKey={activeView ? activeView.key : `${project.id}/${file}`}
+          value={activeView ? activeView.text : (project.files[file] ?? "")}
           isJson={file.endsWith(".json")}
           wrap={prefs.wrap}
-          diagnostics={diagnostics}
-          onChange={update}
+          diagnostics={activeView ? [] : diagnostics}
+          onChange={activeView ? editLayer : update}
           onCursorLine={setCursorLine}
           jumpTo={jump}
           links={links}
@@ -424,7 +461,7 @@ export function App() {
           <nav className="tabs" role="tablist">
             {([...(sheetFile && project.files[sheetFile] !== undefined ? ["sheet"] : []), "play", "book", "renpy", "mv", "report", "bible"] as Tab[]).map((t) => (
               <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-                {{ sheet: `◆ ${ok?.sheets.find((x) => x.file === sheetFile)?.sheet.name ?? "Sheet"}`, play: "Play", book: "Book", renpy: "Ren'Py", mv: "RPG Maker MV", report: "Report", bible: "Bible" }[t]}
+                {{ sheet: `◆ ${ok?.sheets.find((x) => x.file === sheetFile)?.sheet.name ?? "Sheet"}`, play: "Preview", book: "Book", renpy: "Ren'Py", mv: "RPG Maker MV", report: "Report", bible: "Bible" }[t]}
               </button>
             ))}
           </nav>
