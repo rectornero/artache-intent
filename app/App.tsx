@@ -29,13 +29,16 @@ import { saveSnapshot } from "./history.ts";
 import type { LinkTarget } from "./intentMode.ts";
 import { type Sheet, detectMinigames, newSheet, sheetFileName, sheetNames, sheetUsage, SHEET_KINDS, type SheetKind } from "../src/core/sheets.ts";
 import { SAMPLES, newProject } from "./samples.ts";
-import { deliverExport, whenSaveFails, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, pickFolder, readFolder, savePrefs, saveFileAs, saveProjects, writeFolder, type Project } from "./storage.ts";
+import { deliverExport, whenSaveFails, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, openProjectFile, pickFolder, readFolder, saveProjectFile, savePrefs, saveFileAs, saveProjects, writeFolder, type Project } from "./storage.ts";
 import { CLAUDE_FILES } from "./claudeCode.ts";
 import { ConnectClaude } from "./ConnectClaude.tsx";
+import { BackupsPanel } from "./BackupsPanel.tsx";
+import { EVERY_MS, saveBackup, sameFiles, type Backup } from "./backups.ts";
+import { pack, unpack } from "../src/core/pack.ts";
 import { diskChanges, mergeDisk } from "../src/core/folder.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPrefs } from "./themes.ts";
 
-type Tab = "sheet" | "play" | "book" | "search" | "checks" | "renpy" | "mv" | "report" | "bible" | "history";
+type Tab = "sheet" | "play" | "book" | "search" | "checks" | "backups" | "renpy" | "mv" | "report" | "bible" | "history";
 type MobileView = "files" | "write" | "preview";
 type ToastAction = { label: string; run: () => void };
 
@@ -44,9 +47,9 @@ const PANEL_GROUPS: Array<{ id: string; label: string; icon: string; tabs: Tab[]
   { id: "read", label: "Read", icon: "story", tabs: ["play", "book"] },
   { id: "find", label: "Find", icon: "search", tabs: ["search"] },
   { id: "export", label: "Export", icon: "engine", tabs: ["report", "mv", "renpy"] },
-  { id: "tools", label: "Tools", icon: "data", tabs: ["checks", "history", "bible"] },
+  { id: "tools", label: "Tools", icon: "data", tabs: ["checks", "history", "backups", "bible"] },
 ];
-const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", search: "Find", checks: "Story check", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
+const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", search: "Find", checks: "Story check", backups: "Backups", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
 
 function safeCompile(p: Project): CompileResult | { error: string } {
   try {
@@ -89,7 +92,13 @@ export function App() {
   const [historyVersion, setHistoryVersion] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
-  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; file: string } | null>(null);
+  const [backupVersion, setBackupVersion] = useState(0);
+  const [popMenu, setPopMenu] = useState<{ x: number; y: number; items: Array<{ label: string; run: () => void; danger?: boolean }> } | null>(null);
+  const pop = (e: React.MouseEvent, items: NonNullable<typeof popMenu>["items"]) => {
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    setPopMenu({ x: r.left, y: r.bottom + 4, items });
+  };
   const [reviewing, setReviewing] = useState<{ projectId: string; play: string; from: Version; to: Version; before: string; after: string; fromText: string } | null>(null);
 
   useEffect(() => {
@@ -157,6 +166,71 @@ export function App() {
     return () => window.removeEventListener("focus", onFocus);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id, project.folder]);
+
+  // Backups: every project, at most every ten minutes, only when something changed.
+  const lastBackup = useRef<Record<string, number>>({});
+  const backUp = async (p: Project, force = false) => {
+    if (!force && Date.now() - (lastBackup.current[p.id] ?? 0) < EVERY_MS) return;
+    lastBackup.current[p.id] = Date.now();
+    try {
+      if (await saveBackup(p.id, p.name, p.files)) setBackupVersion((v) => v + 1);
+      else if (force) say("Nothing new since the last backup.");
+    } catch {
+      if (force) say("This device didn't allow a backup. Save a project file instead.", 8000);
+    }
+  };
+  useEffect(() => {
+    const tick = () => latest.current.forEach((p) => void backUp(p));
+    const first = setTimeout(tick, 5000);
+    const t = setInterval(tick, 60_000);
+    return () => (clearTimeout(first), clearInterval(t));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const replaceFiles = (id: string, files: Record<string, string>, done: string) => {
+    const before = latest.current.find((x) => x.id === id);
+    if (!before) return;
+    void saveBackup(before.id, before.name, before.files).then(() => setBackupVersion((v) => v + 1), () => undefined);
+    setProjects((list) => list.map((x) => (x.id === id ? { ...x, files } : x)));
+    say(done, 10000, { label: "Undo", run: () => setProjects((list) => list.map((x) => (x.id === id ? { ...x, files: before.files } : x))) });
+  };
+  const restoreBackup = (b: Backup) => {
+    if (sameFiles(b.files, project.files)) return say("The project is already exactly like this backup.");
+    replaceFiles(project.id, b.files, `Restored the backup from ${new Date(b.at).toLocaleString()}. The text before it is the newest backup.`);
+  };
+  const saveAsProjectFile = async (files: Record<string, string>, name = project.name) => {
+    const data = await pack({ id: project.id.startsWith("folder:") ? `p${Date.now()}` : project.id, name, savedAt: Date.now(), app: __APP_VERSION__ }, files);
+    if (await saveProjectFile(name, data)) say(isTauri() ? "Project file saved." : "Project file downloaded.");
+  };
+  const openProject = async () => {
+    let got: Awaited<ReturnType<typeof unpack>>;
+    try {
+      const data = await openProjectFile();
+      if (!data) return;
+      got = await unpack(data);
+    } catch (e) {
+      return say(e instanceof Error ? e.message : String(e), 6000);
+    }
+    const same = projects.find((p) => p.id === got.meta.id);
+    if (same) {
+      setProjectId(same.id);
+      if (sameFiles(same.files, got.files)) return say(`${same.name} is already up to date.`);
+      return replaceFiles(same.id, got.files, `${same.name} replaced by the project file${got.meta.savedAt ? ` saved ${new Date(got.meta.savedAt).toLocaleString()}` : ""}. The old one is in Backups.`);
+    }
+    const p: Project = { id: got.meta.id, name: got.meta.name, files: got.files };
+    setProjects((l) => [...l, p]);
+    setProjectId(p.id);
+    setFileName(firstScript(p));
+    say(`Opened ${p.name}.`);
+  };
+
+  const openFolderProject = async () => {
+    const p = await openFolder();
+    if (!p) return;
+    disk.current[p.id] = { ...p.files };
+    setProjects((l) => [...l.filter((x) => x.id !== p.id), p]);
+    setProjectId(p.id);
+    setFileName(firstScript(p));
+  };
 
   const keepInFolder = async () => {
     const dir = await pickFolder("Keep this project in a folder");
@@ -456,7 +530,7 @@ export function App() {
     if (sheetFile === f) setSheetFile(null);
   };
   const rowMore = (f: string) => (
-    <button className="row-more" aria-label="More" title="Rename or delete" onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setRowMenu({ x: r.left, y: r.bottom + 4, file: f }); }}>
+    <button className="row-more" aria-label="More" title="Rename or delete" onClick={(e) => pop(e, [{ label: "Rename…", run: () => renameAny(f) }, { label: "Delete…", run: () => deleteAny(f), danger: true }])}>
       <Icon name="more" size={16} />
     </button>
   );
@@ -636,21 +710,19 @@ export function App() {
         </div>
         <div className="side-actions">
           <button className="side-btn" onClick={addProject}>New project</button>
+          <button className="side-btn" onClick={(e) => pop(e, [
+            { label: "Script or sheet…", run: () => void importFiles() },
+            { label: "Project file…", run: () => void openProject() },
+            ...(isTauri() ? [{ label: "Folder…", run: () => void openFolderProject() }] : []),
+          ])}>Open ▾</button>
+          <button className="side-btn" onClick={(e) => pop(e, [
+            ...(!file.endsWith(".json") ? [{ label: `This file as… (${file.split("/").pop()})`, run: () => void saveFileAs(file, project.files[file] ?? "").then((ok) => ok && say(`Saved ${file.split("/").pop()}`)) }] : []),
+            { label: "Project file…", run: () => void saveAsProjectFile(project.files) },
+            ...(isTauri() && !project.folder ? [{ label: "Keep in a folder…", run: () => void keepInFolder() }] : []),
+          ])}>Save ▾</button>
+          <button className="side-btn" onClick={() => { setTab("backups"); setMobile("preview"); }}>Backups</button>
+          {project.folder && <button className="side-btn" onClick={() => void reloadFolder(project, false)} title="Take changes made outside Intent">Reload</button>}
           <button className="side-btn" onClick={() => setConnectOpen(true)} data-testid="connect-claude">✦ Connect Claude</button>
-          <button className="side-btn" onClick={importFiles}>Open file</button>
-          {!file.endsWith(".json") && <button className="side-btn" onClick={async () => { if (await saveFileAs(file, project.files[file] ?? "")) say(`Saved ${file.split("/").pop()}`); }}>Save as file</button>}
-          {isTauri() && (
-            <>
-              <button className="side-btn" onClick={async () => { const p = await openFolder(); if (p) { disk.current[p.id] = { ...p.files }; setProjects((l) => [...l.filter((x) => x.id !== p.id), p]); setProjectId(p.id); setFileName(firstScript(p)); } }}>Open folder</button>
-              {project.folder ? (
-                <>
-                  <button className="side-btn" onClick={() => void reloadFolder(project, false)} title="Take changes made outside Intent">Reload</button>
-                </>
-              ) : (
-                <button className="side-btn" onClick={() => void keepInFolder()} title="Save this project in a folder on disk, kept up to date as you type">Keep in a folder</button>
-              )}
-            </>
-          )}
         </div>
         {prefs.showOutline && outline.length > 0 && (
           <>
@@ -790,6 +862,10 @@ export function App() {
                 onDraftPrompt={draftPrompt}
                 onRename={(n) => renameSheetTo(sheetFile, n)}
               />
+            ) : tab === "backups" ? (
+              <BackupsPanel project={project.id} version={backupVersion} onBackUpNow={() => void backUp(project, true)} onRestore={restoreBackup}
+                onSaveFile={(b) => void saveAsProjectFile(b.files, `${b.name} ${new Date(b.at).toISOString().slice(0, 16).replace("T", " ").replace(":", "")}`)}
+                onSaveProjectFile={() => void saveAsProjectFile(project.files)} onOpenProjectFile={() => void openProject()} />
             ) : tab === "checks" ? (
               <ChecksPanel files={project.files} script={isScript ? file : null} busy={!!busy} onRun={(w) => void runCheck(w)} onOpen={openAt} onDismiss={dismissIssue} />
             ) : tab === "search" ? (
@@ -834,11 +910,12 @@ export function App() {
         ))}
       </nav>
 
-      {rowMenu && (
-        <div className="ctx-back" onClick={() => setRowMenu(null)}>
-          <div className="ctx-menu" role="menu" style={{ left: Math.min(rowMenu.x, window.innerWidth - 230), top: Math.min(rowMenu.y, window.innerHeight - 120) }} onClick={(e) => e.stopPropagation()}>
-            <button role="menuitem" onClick={() => { const f = rowMenu.file; setRowMenu(null); renameAny(f); }}>Rename…</button>
-            <button role="menuitem" className="danger" onClick={() => { const f = rowMenu.file; setRowMenu(null); deleteAny(f); }}>Delete…</button>
+      {popMenu && (
+        <div className="ctx-back" onClick={() => setPopMenu(null)}>
+          <div className="ctx-menu" role="menu" style={{ left: Math.min(popMenu.x, window.innerWidth - 250), top: Math.min(popMenu.y, window.innerHeight - 40 * popMenu.items.length - 20) }} onClick={(e) => e.stopPropagation()}>
+            {popMenu.items.map((it) => (
+              <button key={it.label} role="menuitem" className={it.danger ? "danger" : ""} onClick={() => { setPopMenu(null); it.run(); }}>{it.label}</button>
+            ))}
           </div>
         </div>
       )}

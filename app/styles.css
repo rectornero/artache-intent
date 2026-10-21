@@ -471,3 +471,18 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .snippet-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel2); font-size: 13px; }
 .snippet-head .ghost { margin-left: auto; }
 .connect-snippet pre { margin: 0; padding: 10px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Backups */
+.backups { display: flex; flex-direction: column; gap: 12px; }
+.backups h4 { margin: 0; font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.backup-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--panel); }
+.backup-card p { margin: 6px 0 10px; font-size: 13px; line-height: 1.5; }
+.backup-card .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.backup-card .row button:not(.primary), .backups-head button, .backup-list li > button:not(.ghost) { padding: 5px 14px; border-radius: 999px; border: 1px solid var(--border); }
+.backups-head { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.backups-note { margin: -6px 0 0; font-size: 13px; }
+.backup-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.backup-list li { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); }
+.backup-list li:first-child { border-top: 0; }
+.backup-list li > div { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 13px; }
+.backup-list li > div .muted { font-size: 12px; }

@@ -182,3 +182,38 @@ export async function deliverExport(name: string, files: Record<string, string>)
   for (const [path, text] of Object.entries(files)) zip.file(path, text);
   download(`${name.replace(/[^\w-]+/g, "-")}-export.zip`, await zip.generateAsync({ type: "blob" }));
 }
+
+/** Save a whole project as one .intentproj file: a save dialog in the app, a download in the browser. */
+export async function saveProjectFile(name: string, data: Uint8Array): Promise<boolean> {
+  const base = `${name.replace(/[^\w -]+/g, "").trim() || "project"}.intentproj`;
+  if (isTauri()) {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const fs = await import("@tauri-apps/plugin-fs");
+    const path = await save({ defaultPath: base, filters: [{ name: "Intent project", extensions: ["intentproj"] }] });
+    if (!path) return false;
+    await fs.writeFile(path, data);
+    return true;
+  }
+  download(base, new Blob([data as BlobPart], { type: "application/zip" }));
+  return true;
+}
+
+/** Pick a .intentproj file; null if none was picked. */
+export async function openProjectFile(): Promise<Uint8Array | null> {
+  if (isTauri()) {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const fs = await import("@tauri-apps/plugin-fs");
+    const path = await open({ filters: [{ name: "Intent project", extensions: ["intentproj", "zip"] }] });
+    return typeof path === "string" ? fs.readFile(path) : null;
+  }
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".intentproj,.zip";
+    input.onchange = async () => {
+      const f = input.files?.[0];
+      resolve(f ? new Uint8Array(await f.arrayBuffer()) : null);
+    };
+    input.click();
+  });
+}

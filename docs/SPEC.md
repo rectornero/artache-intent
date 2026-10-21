@@ -194,3 +194,8 @@ Settings → Claude → **Copy and paste**, or simply no key. Every ✦ action (
 ## Connector (MCP, 0.3)
 
 `intent-mcp` is an MCP server for a folder project, so Claude Code or the Claude desktop app can use Intent's own tools: `intent_overview`, `intent_format`, `intent_read`, `intent_write` (returns Intent's problems after every write), `intent_find`, `intent_replace`, `intent_rename_sheet`, `intent_mark_in_step`, `intent_save_story_check`, and `intent_export`. It only touches Intent's files inside the project folder. Build it with `npm run mcp:build` (→ `dist-mcp/intent-mcp.mjs`, needs Node.js 20+). The Windows app ships it, and **✦ Connect Claude** shows the exact commands.
+
+## Backups and moving between devices (0.3)
+
+- Intent backs up every project on the device (IndexedDB) every ten minutes while it changes, keeping the newest 15. Tools → Backups lists them: **Restore** (the current text becomes a backup first, and Undo is offered) or **Save file**.
+- **Save ▾ → Project file** writes the whole project as one `.intentproj` file (a zip with `intent.project.json`). **Open ▾ → Project file** opens it on any device; a newer copy of the same project replaces it, and the old one goes to Backups.
