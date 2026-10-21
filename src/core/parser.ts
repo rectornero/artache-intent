@@ -14,6 +14,7 @@ interface Line {
 
 /** Placeholder line for a fenced block; the block itself is kept aside verbatim. */
 const FENCE = "\u0000fence:";
+const NARRATOR = "\u0000narrator:";
 
 const RESERVED = new Set(["BG", "CG", "BLACK", "MUSIC", "SOUND", "PAUSE", "SHAKE", "HIDE", "IF", "ELSE", "END", "TODO", "LINEUP"]);
 const DATA_KINDS = new Set(["npc", "talk", "route", "event", "quest", "map", "item", "enemy", "edit", "remove", "rename", "scene"]);
@@ -65,13 +66,16 @@ export class Parser {
   private fences: Array<{ kind: string; text: string; line: number }> = [];
   private cast: Map<string, string>;
   private stage: StageContext;
-  private lastSpeaker: { speaker: string | null; as?: string; mood?: string } = { speaker: null };
+  private lastSpeaker: { speaker: string | null; as?: string; mood?: string; narration?: boolean } = { speaker: null };
+  /** Who speaks plain lines right now; `@narrator NAME` switches it. */
+  private narrator: string | null;
 
   constructor(
     private cfg: ProjectConfig,
     private file = "script.intent",
   ) {
     this.aliases = { ...cfg.aliases };
+    this.narrator = cfg.narrator;
     this.cast = new Map(Object.keys(cfg.cast).map((k) => [k.toUpperCase(), k]));
     this.stage = { cfg, isCast: (n) => this.castKey(n) };
   }
@@ -226,6 +230,11 @@ export class Parser {
         }
         return;
       }
+      // `@narrator FREE`, or the `// narrator: FREE` note, switches who narrates.
+      if ((m = t.match(/^(?:@narrator\s+|\/\/\s*narrator\s*:\s*)(\S.*?)\s*$/i))) {
+        out.push({ text: `${text.slice(0, indentOf(text))}${NARRATOR}${m[1]}`, line });
+        return;
+      }
       if (t.startsWith("//")) return;
       if ((m = t.match(/^@(\w+)$/)) && this.macros.has(m[1])) {
         const pad = text.slice(0, indentOf(text));
@@ -256,7 +265,13 @@ export class Parser {
       const t = l.text;
       let m: RegExpMatchArray | null;
 
-      if (t.startsWith(FENCE)) {
+      if (t.startsWith(NARRATOR)) {
+        const name = t.slice(NARRATOR.length).trim();
+        const who = /^(none|off|nobody|-)$/i.test(name) ? null : this.castKey(name);
+        if (who === null && !/^(none|off|nobody|-)$/i.test(name)) this.warn(l.line, `@narrator ${name}: no cast member or sheet with that name`, "error");
+        else this.narrator = who;
+        out.push({ n: "narrator", line: l.line, who: this.narrator });
+      } else if (t.startsWith(FENCE)) {
         const f = this.fences[Number(t.slice(FENCE.length))];
         if (f.kind === "draft") {
           out.push({ n: "draft", line: f.line, text: f.text });
@@ -328,7 +343,7 @@ export class Parser {
     }
     // (as FREE) line / (hollow) line: the narrator with a voice.
     if ((m = t.match(/^\(([^)]+)\)\s+(.+)$/))) {
-      const who = this.speakerMods(this.cfg.narrator, m[1], line);
+      const who = this.speakerMods(this.narrator, m[1], line);
       this.lastSpeaker = who;
       return { n: "say", line, ...who, text: this.inline(m[2]) };
     }
@@ -349,8 +364,8 @@ export class Parser {
         return { n: "say", line, ...who, text: this.inline(m[3]) };
       }
     }
-    this.lastSpeaker = { speaker: this.cfg.narrator };
-    return { n: "say", line, speaker: this.cfg.narrator, text: this.inline(t) };
+    this.lastSpeaker = { speaker: this.narrator, narration: true };
+    return { n: "say", line, speaker: this.narrator, narration: true, text: this.inline(t) };
   }
 
   private speakerMods(speaker: string | null, mod: string, line: number) {

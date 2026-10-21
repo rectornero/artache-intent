@@ -34,7 +34,12 @@ export class RenpyExporter {
   private placeholders = new Map<string, string>();
   private voiceAs = new Map<string, { speaker: string; as: string }>();
 
-  constructor(private cfg: ProjectConfig) {}
+  /** Who narrates plain text at this point; `@narrator` switches it. */
+  narrator: string | null;
+
+  constructor(private cfg: ProjectConfig) {
+    this.narrator = cfg.narrator;
+  }
 
   private charId(key: string): string {
     return this.cfg.cast[key]?.id ?? slug(key);
@@ -246,7 +251,7 @@ export class RenpyExporter {
       case "menu": {
         const out = [`${ind}menu:`];
         if (n.prompt) {
-          const who = this.sayer(this.cfg.narrator);
+          const who = this.sayer(this.narrator);
           out.push(`${ind}${IND}${who ? `${who} ` : ""}"${this.text(n.prompt)}"`);
         }
         for (const o of n.options) {
@@ -274,7 +279,7 @@ export class RenpyExporter {
         return [`${ind}if config.developer:`, `${ind}${IND}"{color=#f0f}TODO: ${rpyString(n.text)}{/color}"`];
       case "draft": {
         this.report.notes.push(`Line ${n.line}: draft prose exported as plain narration until it's converted.`);
-        const who = this.sayer(this.cfg.narrator);
+        const who = this.sayer(this.narrator);
         return paragraphs(n.text).map((p) => `${ind}${who ? `${who} ` : ""}"${rpyString(p)}"`);
       }
       case "code":
@@ -284,6 +289,9 @@ export class RenpyExporter {
         }
         return n.text.split("\n").map((l) => (l.trim() ? ind + l : ""));
       case "original":
+        return [];
+      case "narrator":
+        this.narrator = n.who;
         return [];
     }
   }
@@ -437,7 +445,10 @@ export class RenpyExporter {
 export function exportRenpy(scripts: Script[], cfg: ProjectConfig): RenpyOutput {
   const ex = new RenpyExporter(cfg);
   const files: Record<string, string> = {};
-  for (const s of scripts) files[`${slug(s.file.replace(/\.[^.]+$/, ""))}.rpy`] = ex.scriptFile(s);
+  for (const s of scripts) {
+    ex.narrator = cfg.narrator;
+    files[`${slug(s.file.replace(/\.[^.]+$/, ""))}.rpy`] = ex.scriptFile(s);
+  }
   files["intent_defs.rpy"] = ex.definitions();
   return { files, report: ex.report };
 }

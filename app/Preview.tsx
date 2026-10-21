@@ -94,7 +94,7 @@ function PreviewNode({ n, cfg }: { n: Node; cfg: ProjectConfig }) {
       const who = n.speaker ? cfg.cast[n.speaker] : undefined;
       const colorOf = n.as ?? n.speaker;
       const color = colorOf ? cfg.cast[colorOf]?.color : undefined;
-      const isNarrator = n.speaker === cfg.narrator && !n.as;
+      const isNarrator = (n.narration || n.speaker === cfg.narrator) && !n.as;
       const name = n.speaker ? (who?.display ?? n.speaker) : "";
       return (
         <div className={`say ${isNarrator || !n.speaker ? "narration" : ""}`} data-line={n.line}>
@@ -178,6 +178,8 @@ function PreviewNode({ n, cfg }: { n: Node; cfg: ProjectConfig }) {
       );
     case "original":
       return null;
+    case "narrator":
+      return <span className="chip chip-narrator">Narrator: {n.who ? (cfg.cast[n.who]?.display ?? n.who) : "none"}</span>;
   }
 }
 
@@ -190,7 +192,7 @@ function quoteLine(parts: Inline[]): Inline[] {
 function BookNode({ n, cfg }: { n: Node; cfg: ProjectConfig }) {
   switch (n.n) {
     case "say": {
-      if (!n.speaker || (n.speaker === cfg.narrator && !n.as)) return <p data-line={n.line}><InlineText parts={n.text} /></p>;
+      if (!n.speaker || ((n.narration || n.speaker === cfg.narrator) && !n.as)) return <p data-line={n.line}><InlineText parts={n.text} /></p>;
       const name = cfg.cast[n.speaker]?.display ?? n.speaker;
       return (
         <p data-line={n.line}>

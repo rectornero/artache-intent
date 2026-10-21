@@ -61,7 +61,11 @@ export class MvExporter {
   private nextCe: number;
   private pictures = new Map<string, number>();
 
+  /** Who narrates plain text at this point; `@narrator` switches it. */
+  narrator: string | null = null;
+
   constructor(private cfg: ProjectConfig) {
+    this.narrator = cfg.narrator;
     this.nextSwitch = cfg.mv.switchStart;
     this.nextVar = cfg.mv.variableStart;
     this.nextCe = cfg.mv.commonEventStart;
@@ -318,7 +322,7 @@ export class MvExporter {
           this.command(n.cmd, n.line, ind, out);
           break;
         case "menu": {
-          if (n.prompt) this.say(out, ind, this.cfg.narrator, undefined, undefined, this.text(n.prompt));
+          if (n.prompt) this.say(out, ind, this.narrator, undefined, undefined, this.text(n.prompt));
           if (n.options.some((o) => o.cond)) this.report.notes.push(`Line ${n.line}: MV can't hide choices natively; conditional choices are always shown.`);
           out.push(cmd(102, ind, [n.options.map((o) => o.text), -1, 0, 2, 0]));
           n.options.forEach((o, k) => {
@@ -341,7 +345,7 @@ export class MvExporter {
           break;
         case "draft":
           this.report.notes.push(`Line ${n.line}: draft prose exported as plain narration until it's converted.`);
-          for (const p of paragraphs(n.text)) this.say(out, ind, this.cfg.narrator, undefined, undefined, p);
+          for (const p of paragraphs(n.text)) this.say(out, ind, this.narrator, undefined, undefined, p);
           break;
         case "code":
           if (n.engine !== "mv") {
@@ -354,6 +358,9 @@ export class MvExporter {
           }
           break;
         case "original":
+          break;
+        case "narrator":
+          this.narrator = n.who;
           break;
         case "todo":
           this.report.todos.push({ text: n.text, line: n.line });
@@ -452,6 +459,9 @@ export class MvExporter {
 
 export function exportMv(scripts: Script[], cfg: ProjectConfig): MvOutput {
   const ex = new MvExporter(cfg);
-  for (const s of scripts) ex.script(s);
+  for (const s of scripts) {
+    ex.narrator = cfg.narrator;
+    ex.script(s);
+  }
   return ex.output();
 }

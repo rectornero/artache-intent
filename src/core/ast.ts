@@ -80,6 +80,8 @@ export type Node =
       speaker: string | null;
       as?: string;
       mood?: string;
+      /** A plain line spoken by whoever narrates at this point. */
+      narration?: boolean;
       text: Inline[];
     }
   | { n: "cmd"; line: number; cmd: Command }
@@ -88,6 +90,8 @@ export type Node =
   | { n: "custom"; line: number; type: string; header: string; items: CustomItem[] }
   | { n: "note"; line: number; text: string }
   | { n: "todo"; line: number; text: string }
+  /** `@narrator FREE`: plain lines from here on are FREE's, until the next switch. */
+  | { n: "narrator"; line: number; who: string | null }
   /** Layer 1: free prose not converted to script yet. */
   | { n: "draft"; line: number; text: string }
   /** Layer 3: engine code passed through to that engine only. */
