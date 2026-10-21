@@ -59,6 +59,7 @@ export function App() {
   const [toastAction, setToastAction] = useState<ToastAction | null>(null);
   const [apiKey, setApiKey] = useState(loadApiKey);
   const [model, setModel] = useState<ClaudeModel>(loadModel);
+  const [reviewing, setReviewing] = useState<{ src: string; items: Array<{ k: number; prose: string; script: string }>; scripts: Array<string | null> } | null>(null);
 
   const theme = activeTheme(prefs);
   useEffect(() => {
@@ -97,44 +98,51 @@ export function App() {
     setView({ ...activeView, text });
     update(fromLayer(activeView.v, text, ok.config));
   };
-  // Claude converts the file's draft passages: from the ✦ button, or when the
-  // writer leaves Draft. Without a key, passages stay as prose.
-  const convertDrafts = async () => {
+  // Claude converts the file's draft passages: from the ✦ button (with a
+  // review before anything changes), or when the writer leaves Draft
+  // (applied at once, with Undo). Without a key, passages stay as prose.
+  const convertDrafts = async (review = false) => {
     const src = project.files[file] ?? "";
     // Only passages with real, new prose count: empty ones and the starter hint stay put.
     const all = ok && file.endsWith(".intent") ? draftBlocks(src) : [];
     const real = all.map((b) => b.prose.trim() !== "" && b.prose.trim() !== DRAFT_HINT);
     const reused = all.map((b, k) => (real[k] ? remembered(b.prose) ?? null : null));
     const blocks = all.filter((b, k) => real[k] && reused[k] === null);
-    if (ok && reused.some((r) => r !== null) && !blocks.length) {
-      // Everything was converted before (say, after Undo): no call needed.
-      update(replaceDrafts(src, reused));
-      say("Converted again from last time, no new Claude call.", 8000, { label: "Undo", run: () => { update(src); setView(null); setLayer("draft"); } });
-    } else if (ok && blocks.length) {
+    if (!ok || !real.some(Boolean)) return;
+    let scripts: Array<string | null> = reused;
+    let note = "Converted again from last time, no new Claude call.";
+    if (blocks.length) {
       const n = blocks.length;
       const what = `${n} draft passage${n > 1 ? "s" : ""}`;
       if (!apiKey) {
         say(`${n === 1 ? "This draft passage stays" : `These ${n} draft passages stay`} as prose. Add your Claude key to convert.`, 8000, { label: "Settings", run: () => setSettingsOpen(true) });
-      } else {
-        setBusy(`Claude is converting ${what}…`);
-        try {
-          const before = src.split("\n").slice(0, blocks[0].open).join("\n");
-          const fresh = await claudeConvert(apiKey, model, blocks.map((b) => b.prose), ok.config, ok.sheets.map((x) => x.sheet), before);
-          let next = 0;
-          const scripts = all.map((b, k) => (!real[k] ? null : reused[k] ?? fresh[next++]));
-          update(replaceDrafts(src, scripts));
-          for (const g of fresh.flatMap(detectMinigames)) {
-            const f = sheetFileName("minigame", g);
-            if (project.files[f] === undefined) setFile(f, newSheet("minigame", g, `First written about in ${file}.`));
-          }
-          setView(null);
-          say(`Claude converted ${what}.`, 8000, { label: "Undo", run: () => { update(src); setView(null); setLayer("draft"); } });
-        } catch (e) {
-          say(`Claude couldn't convert: ${explainFailure(e)}. Your prose is unchanged.`, 8000);
-        }
+        return;
+      }
+      setBusy(`Claude is converting ${what}…`);
+      try {
+        const before = src.split("\n").slice(0, blocks[0].open).join("\n");
+        const fresh = await claudeConvert(apiKey, model, blocks.map((b) => b.prose), ok.config, ok.sheets.map((x) => x.sheet), before);
+        let next = 0;
+        scripts = all.map((b, k) => (!real[k] ? null : reused[k] ?? fresh[next++]));
+        note = `Claude converted ${what}.`;
+      } catch (e) {
+        say(`Claude couldn't convert: ${explainFailure(e)}. Your prose is unchanged.`, 8000);
+        return;
+      } finally {
         setBusy(null);
       }
     }
+    if (review) setReviewing({ src, items: all.flatMap((b, k) => (scripts[k] === null ? [] : [{ k, prose: b.prose, script: scripts[k]! }])), scripts });
+    else applyConversion(src, scripts, note);
+  };
+  const applyConversion = (src: string, scripts: Array<string | null>, note: string) => {
+    update(replaceDrafts(src, scripts));
+    for (const g of scripts.flatMap((x) => (x ? detectMinigames(x) : []))) {
+      const f = sheetFileName("minigame", g);
+      if (project.files[f] === undefined) setFile(f, newSheet("minigame", g, `First written about in ${file}.`));
+    }
+    setView(null);
+    say(note, 8000, { label: "Undo", run: () => { update(src); setView(null); setLayer("draft"); } });
   };
   const switchLayer = async (l: Layer) => {
     if (busy) return;
@@ -415,7 +423,7 @@ export function App() {
         {file.endsWith(".intent") && (
           <div className="toolbar" role="toolbar" aria-label="Layers">
             {pendingDrafts > 0 && (
-              <button className="claude-go" onClick={() => { if (!busy) void convertDrafts(); }} disabled={!!busy} title={apiKey ? "Turn new prose into script with Claude" : "Add your Claude key in Settings first"} data-testid="convert-claude">
+              <button className="claude-go" onClick={() => { if (!busy) void convertDrafts(true); }} disabled={!!busy} title={apiKey ? "Turn new prose into script with Claude" : "Add your Claude key in Settings first"} data-testid="convert-claude">
                 <span aria-hidden="true">✦</span> Convert with Claude <span className="count">{pendingDrafts}</span>
               </button>
             )}
@@ -573,6 +581,36 @@ export function App() {
                 ))}
               </>
             )}
+          </div>
+        </div>
+      )}
+      {reviewing && (
+        <div className="modal-back" onClick={() => setReviewing(null)}>
+          <div className="modal wide" role="dialog" aria-label="Review Claude's conversion" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>✦ Review the conversion</h2>
+              <button className="icon" onClick={() => setReviewing(null)} aria-label="Close">✕</button>
+            </div>
+            <p className="muted">Your prose on the left, Claude's script on the right. Edit the script if you like; nothing changes until you accept.</p>
+            {reviewing.items.map((it, i) => (
+              <div key={it.k} className="convert-grid">
+                <div className="prose">{it.prose}</div>
+                <div>
+                  <textarea value={it.script} spellCheck={false} rows={Math.min(14, it.script.split("\n").length + 1)} data-testid="review-script"
+                    onChange={(e) => { const items = [...reviewing.items]; items[i] = { ...it, script: e.target.value }; setReviewing({ ...reviewing, items }); }} />
+                  {it.script.split("\n").filter((l) => l.trim().startsWith("// check:")).map((l, j) => <div key={j} className="check-note">{l.trim().slice(9).trim()}</div>)}
+                </div>
+              </div>
+            ))}
+            <div className="modal-actions">
+              <button onClick={() => setReviewing(null)}>Keep as prose</button>
+              <button className="primary" data-testid="review-accept" onClick={() => {
+                const scripts = [...reviewing.scripts];
+                for (const it of reviewing.items) scripts[it.k] = it.script;
+                applyConversion(reviewing.src, scripts, "Conversion applied.");
+                setReviewing(null);
+              }}>Accept</button>
+            </div>
           </div>
         </div>
       )}
