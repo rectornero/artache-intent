@@ -4,8 +4,7 @@ import { conditionText } from "../src/core/condition.ts";
 import { slug } from "../src/core/parser.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
-import { applyConversion, draftToScript } from "../src/core/convert.ts";
-import { draftBlocks, draftByRules, fromLayer, replaceDrafts, toLayer, type Layer, type LayerView } from "../src/core/layers.ts";
+import { draftBlocks, fromLayer, replaceDrafts, toLayer, type Layer, type LayerView } from "../src/core/layers.ts";
 import { claudeConvert, explainFailure, loadApiKey, saveApiKey } from "./claude.ts";
 import { parseScript } from "../src/core/parser.ts";
 import { BookView, PreviewNodes } from "./Preview.tsx";
@@ -18,6 +17,7 @@ import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPref
 
 type Tab = "sheet" | "play" | "book" | "renpy" | "mv" | "report" | "bible";
 type MobileView = "files" | "write" | "preview";
+type ToastAction = { label: string; run: () => void };
 
 function safeCompile(p: Project): CompileResult | { error: string } {
   try {
@@ -53,9 +53,8 @@ export function App() {
   const [layer, setLayer] = useState<Layer>("play");
   const [view, setView] = useState<{ key: string; v: LayerView; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [undo, setUndo] = useState<{ file: string; text: string } | null>(null);
+  const [toastAction, setToastAction] = useState<ToastAction | null>(null);
   const [apiKey, setApiKey] = useState(loadApiKey);
-  const [converting, setConverting] = useState<{ line: number; prose: string; script: string; checks: string[] } | null>(null);
 
   const theme = activeTheme(prefs);
   useEffect(() => {
@@ -94,46 +93,42 @@ export function App() {
     setView({ ...activeView, text });
     update(fromLayer(activeView.v, text, ok.config));
   };
-  // Leaving Draft converts every draft passage in the file at once: with
-  // Claude when the writer added a key, with the rules otherwise.
+  // Leaving Draft converts every draft passage in the file at once, with
+  // Claude on the writer's own key. Without a key, passages stay as prose.
   const switchLayer = async (l: Layer) => {
     if (busy) return;
     const src = project.files[file] ?? "";
     const blocks = l !== "draft" && ok && file.endsWith(".intent") ? draftBlocks(src) : [];
     if (ok && blocks.length) {
-      const sheets = ok.sheets.map((x) => x.sheet);
       const n = blocks.length;
       const what = `${n} draft passage${n > 1 ? "s" : ""}`;
-      let scripts: string[] | null = null;
-      let note = `Converted ${what} with the rules.`;
-      if (apiKey) {
+      if (!apiKey) {
+        say(`${n === 1 ? "This draft passage stays" : `These ${n} draft passages stay`} as prose. Add your Claude key to convert.`, 8000, { label: "Settings", run: () => setSettingsOpen(true) });
+      } else {
         setBusy(`Claude is converting ${what}…`);
         try {
           const before = src.split("\n").slice(0, blocks[0].open).join("\n");
-          scripts = await claudeConvert(apiKey, blocks.map((b) => b.prose), ok.config, sheets, before);
-          note = `Claude converted ${what}.`;
+          const scripts = await claudeConvert(apiKey, blocks.map((b) => b.prose), ok.config, ok.sheets.map((x) => x.sheet), before);
+          update(replaceDrafts(src, scripts));
+          for (const g of scripts.flatMap(detectMinigames)) {
+            const f = sheetFileName("minigame", g);
+            if (project.files[f] === undefined) setFile(f, newSheet("minigame", g, `First written about in ${file}.`));
+          }
+          say(`Claude converted ${what}.`, 8000, { label: "Undo", run: () => { update(src); setView(null); setLayer("draft"); } });
         } catch (e) {
-          note = `Claude couldn't convert (${explainFailure(e)}), so the rules did.`;
+          say(`Claude couldn't convert: ${explainFailure(e)}. Your prose is unchanged.`, 8000);
         }
         setBusy(null);
       }
-      scripts ??= blocks.map((b) => draftByRules(b.prose, ok.config, sheets));
-      update(replaceDrafts(src, scripts));
-      for (const g of scripts.flatMap(detectMinigames)) {
-        const f = sheetFileName("minigame", g);
-        if (project.files[f] === undefined) setFile(f, newSheet("minigame", g, `First written about in ${file}.`));
-      }
-      setUndo({ file, text: src });
-      say(note, 8000);
     }
     setView(null);
     setLayer(l);
   };
 
-  const say = (msg: string, ms = 2500) => {
+  const say = (msg: string, ms = 2500, action: ToastAction | null = null) => {
     setToast(msg);
+    setToastAction(action);
     setTimeout(() => setToast((t) => (t === msg ? "" : t)), ms);
-    if (ms <= 2500) setUndo(null);
   };
 
   const setFile = (name: string, text: string) =>
@@ -239,45 +234,7 @@ export function App() {
     ].sort((a, b) => a.line - b.line);
   }, [script]);
 
-  // The ::: draft block under the cursor, if any (1-based line of its opening fence).
   const source = project.files[file] ?? "";
-  const draftAtCursor = useMemo(() => {
-    if (file.endsWith(".json")) return null;
-    const lines = source.split("\n");
-    let open: number | null = null;
-    for (let i = 0; i < lines.length; i++) {
-      const t = lines[i].trim();
-      if (open === null && /^:::\s*draft\s*$/.test(t)) open = i;
-      else if (open !== null && t === ":::") {
-        if (cursorLine >= open + 1 && cursorLine <= i + 1) return { line: open + 1, prose: lines.slice(open + 1, i).join("\n") };
-        open = null;
-      } else if (open === null && /^:::/.test(t) && t !== ":::") {
-        // another layer opens: skip to its close
-        while (i + 1 < lines.length && lines[i + 1].trim() !== ":::") i++;
-        i++;
-      }
-    }
-    return null;
-  }, [source, file, cursorLine]);
-
-  const startConvert = () => {
-    if (!draftAtCursor || !ok) return;
-    const names = ok.scripts.flatMap((s) => s.blocks.filter((b) => b.kind === "npc").map((b) => b.name));
-    const c = draftToScript(draftAtCursor.prose, ok.config, names, ok.sheets.map((x) => x.sheet));
-    setConverting({ ...draftAtCursor, ...c });
-  };
-
-  const acceptConvert = () => {
-    if (!converting) return;
-    update(applyConversion(source, converting.line, converting.script));
-    for (const g of detectMinigames(converting.script)) {
-      const f = sheetFileName("minigame", g);
-      if (project.files[f] === undefined) setFile(f, newSheet("minigame", g, `First written about in ${file}.`));
-    }
-    setJump({ line: converting.line, n: Date.now() });
-    setConverting(null);
-    say("Draft converted. The prose is kept below as was-draft.");
-  };
 
   const insertBlock = (kind: "draft" | "renpy" | "mv") => {
     const lines = source.split("\n");
@@ -444,8 +401,6 @@ export function App() {
             </div>
             {layer !== "play" ? (
               <span className="label">{layer === "draft" ? "Write as prose. Change tab to turn every new or edited passage into script." : "Edit the code. Lines Intent can't read stay as Ren'Py blocks."}</span>
-            ) : draftAtCursor ? (
-              <button className="convert" onClick={startConvert} data-testid="convert">Convert draft to script</button>
             ) : (
               <span className="label">Add a layer:</span>
             )}
@@ -594,43 +549,13 @@ export function App() {
           </div>
         </div>
       )}
-      {converting && (
-        <div className="modal-back" onClick={() => setConverting(null)}>
-          <div className="modal wide" role="dialog" aria-label="Convert draft" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <h2>Convert draft to script</h2>
-              <button className="icon" onClick={() => setConverting(null)} aria-label="Close">✕</button>
-            </div>
-            <p className="muted">Your words stay as written. Intent only splits narration from dialogue and guesses speakers. Edit the right side before you accept; the prose is kept as a was-draft block.</p>
-            <div className="convert-grid">
-              <div>
-                <h3>Draft</h3>
-                <div className="prose">{converting.prose}</div>
-              </div>
-              <div>
-                <h3>Script</h3>
-                <textarea value={converting.script} onChange={(e) => setConverting({ ...converting, script: e.target.value })} spellCheck={false} data-testid="convert-script" />
-              </div>
-            </div>
-            {converting.checks.length > 0 && (
-              <ul className="checks">
-                {converting.checks.map((c, k) => <li key={k}>{c}</li>)}
-              </ul>
-            )}
-            <div className="modal-actions">
-              <button onClick={() => setConverting(null)}>Cancel</button>
-              <button className="primary" onClick={acceptConvert} data-testid="convert-accept">Accept</button>
-            </div>
-          </div>
-        </div>
-      )}
       {settingsOpen && <Settings prefs={prefs} setPrefs={setPrefs} theme={theme} apiKey={apiKey} setApiKey={(k) => { saveApiKey(k); setApiKey(k.trim()); }} onClose={() => setSettingsOpen(false)} />}
       {busy && <div className="busy" role="status"><span className="spinner" />{busy}</div>}
       {toast && (
         <div className="toast" role="status">
           {toast}
-          {undo && undo.file === file && (
-            <button className="link" onClick={() => { update(undo.text); setUndo(null); setToast(""); setView(null); setLayer("draft"); }}>Undo</button>
+          {toastAction && (
+            <button className="link" onClick={() => { toastAction.run(); setToastAction(null); setToast(""); }}>{toastAction.label}</button>
           )}
         </div>
       )}
@@ -726,7 +651,7 @@ function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, onClose }: { pref
         <h3>Claude</h3>
         <div className="claude-key">
           <p className="muted">
-            With your Anthropic API key, Claude converts drafts when you change tab. Without it, Intent uses its own rules. The key stays on this
+            With your Anthropic API key, Claude turns draft passages into script when you change tab. Without it, drafts stay as prose. The key stays on this
             device: it is never saved in your project or its exports. Get one at console.anthropic.com → API keys.
           </p>
           {apiKey ? (

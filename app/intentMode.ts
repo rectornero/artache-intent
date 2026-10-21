@@ -107,7 +107,7 @@ export interface LinkTarget {
 
 export const refreshLinks = StateEffect.define<null>();
 
-/** Underlines sheet names as you type. Ctrl/Cmd-click opens the sheet. */
+/** Highlights sheet names as you type. A click opens the sheet. */
 export function sheetLinks(get: () => LinkTarget[], open: (t: LinkTarget) => void): Extension {
   const build = (view: EditorView): DecorationSet => {
     const targets = get();
@@ -123,7 +123,7 @@ export function sheetLinks(get: () => LinkTarget[], open: (t: LinkTarget) => voi
         const start = from + m.index!;
         b.add(start, start + m[1].length, Decoration.mark({
           class: `cm-sheet-link cm-sheet-${t.stub ? "stub" : t.kind}`,
-          attributes: { "data-sheet": t.name.toLowerCase(), title: t.stub ? `${t.name}: no sheet yet. Ctrl-click to make one` : `${t.name} (${t.kind}). Ctrl-click to open the sheet` },
+          attributes: { "data-sheet": t.name.toLowerCase(), title: t.stub ? `${t.name}: no sheet yet. Click to make one` : `${t.name} (${t.kind}). Click to open the sheet` },
         }));
       }
     }
@@ -141,15 +141,16 @@ export function sheetLinks(get: () => LinkTarget[], open: (t: LinkTarget) => voi
     },
     { decorations: (v) => v.decorations },
   );
+  // A plain click (or tap) on a name opens its sheet beside the text; the
+  // cursor still lands there, and double-click or drag selects as usual.
   const click = EditorView.domEventHandlers({
-    mousedown(e) {
-      if (!(e.ctrlKey || e.metaKey)) return false;
+    click(e, view) {
+      if (e.button !== 0 || e.detail > 1 || e.shiftKey || !view.state.selection.main.empty) return false;
       const el = (e.target as HTMLElement).closest("[data-sheet]");
       const t = el && get().find((x) => x.name.toLowerCase() === el.getAttribute("data-sheet"));
       if (!t) return false;
-      e.preventDefault();
       open(t);
-      return true;
+      return false;
     },
   });
   return [plugin, click];

@@ -188,7 +188,6 @@ pre.code.wrap { white-space: pre-wrap; }
 .toolbar .label { color: var(--muted); font-size: 12px; margin-right: 2px; white-space: nowrap; }
 .toolbar button { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
 .toolbar button:hover { background: var(--panel2); }
-.toolbar button.convert { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
 .layer-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
 
 /* Book view: the scene as a manuscript. */
@@ -205,15 +204,10 @@ pre.code.wrap { white-space: pre-wrap; }
 .code-card pre { margin: 4px 0 0; font-family: var(--font-editor); font-size: 12px; white-space: pre-wrap; }
 
 /* Convert dialog: prose on the left, proposed script on the right. */
-.convert-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
-.convert-grid h3 { margin: 0 0 6px; }
-.convert-grid .prose { font-family: var(--font-preview); font-size: 15px; line-height: 1.6; white-space: pre-wrap; padding: 10px 12px; background: var(--panel2); border-radius: 12px; max-height: 50vh; overflow: auto; }
-.convert-grid textarea { width: 100%; min-height: 260px; max-height: 50vh; font-family: var(--font-editor); font-size: 13px; line-height: 1.55; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); resize: vertical; }
 .checks { margin: 10px 0 0; padding-left: 18px; color: var(--warning); font-size: 13px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .modal-actions button { padding: 7px 16px; border-radius: 999px; border: 1px solid var(--border); }
 .modal.wide { width: min(980px, 100%); }
-@media (max-width: 820px) { .convert-grid { grid-template-columns: 1fr; } }
 
 /* Sheets: kinds keep one colour everywhere (sidebar dot, underline, menu). */
 .k-character { --kind: var(--speaker); }
@@ -222,12 +216,16 @@ pre.code.wrap { white-space: pre-wrap; }
 .k-minigame { --kind: var(--accent); }
 .kind-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: var(--kind, var(--border)); vertical-align: 1px; flex: none; }
 
-.editor .cm-sheet-link { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; cursor: text; }
-.editor .cm-sheet-character { text-decoration-color: color-mix(in srgb, var(--speaker) 70%, transparent); }
-.editor .cm-sheet-place { text-decoration-color: color-mix(in srgb, var(--stage) 70%, transparent); }
-.editor .cm-sheet-item { text-decoration-color: color-mix(in srgb, var(--block) 70%, transparent); }
-.editor .cm-sheet-minigame { text-decoration-color: color-mix(in srgb, var(--accent) 70%, transparent); }
-.editor .cm-sheet-stub { text-decoration-style: dotted; text-decoration-color: var(--accent); }
+.editor .cm-sheet-link { --kind: var(--speaker); cursor: pointer; border-radius: 4px; padding: 0 1px; margin: 0 -1px;
+  background: color-mix(in srgb, var(--kind) 13%, transparent); box-shadow: inset 0 -1.5px 0 color-mix(in srgb, var(--kind) 75%, transparent);
+  transition: background .12s ease; }
+.editor .cm-sheet-link:hover { background: color-mix(in srgb, var(--kind) 26%, transparent); }
+.editor .cm-sheet-character { --kind: var(--speaker); }
+.editor .cm-sheet-place { --kind: var(--stage); }
+.editor .cm-sheet-item { --kind: var(--block); }
+.editor .cm-sheet-minigame { --kind: var(--accent); }
+.editor .cm-sheet-stub { --kind: var(--accent); background: transparent; box-shadow: none; text-decoration: underline dashed color-mix(in srgb, var(--accent) 70%, transparent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+.editor .cm-sheet-stub:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 
 .sheet-group { margin-bottom: 4px; }
 .sheet-group-head { display: flex; align-items: center; font-size: 12px; color: var(--muted); padding: 6px 14px 2px; }
@@ -284,3 +282,14 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .claude-key .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .claude-key input { flex: 1; min-width: 180px; }
 .claude-key p { margin: 0 0 8px; }
+
+/* Sheet dropdowns, colour and "your own" values */
+.sheet-fields select { font: inherit; font-size: 14px; color: var(--text); background: var(--panel2); border: 1px solid transparent; border-radius: 10px; padding: 8px 32px 8px 10px; appearance: none; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
+.sheet-fields select:focus { outline: none; border-color: var(--accent); }
+.sheet-fields .own-field, .sheet-fields .colour-field { display: flex; align-items: center; gap: 6px; }
+.sheet-fields .own-field input { flex: 1; min-width: 0; }
+.sheet-fields .own-field button.icon, .sheet-fields .colour-field button.icon { background: var(--panel2); border-radius: 10px; width: 36px; height: 36px; color: var(--muted); }
+.sheet-fields .colour-field input[type="color"] { width: 40px; height: 36px; padding: 2px; border-radius: 10px; cursor: pointer; }
+.sheet-fields .colour-field code { font-size: 13px; color: var(--text); }

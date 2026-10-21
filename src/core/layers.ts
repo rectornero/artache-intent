@@ -2,13 +2,11 @@
 // Script, the source of truth) or Ren'Py code. A view is built chunk by chunk
 // from the source, and remembers which source each rendered chunk came from.
 // Going back, every chunk the writer left alone returns exactly as it was;
-// only edited or new lines go through the conversion rules.
+// edited or new prose waits in ::: draft passages for Claude to convert.
 
 import type { Node, Script } from "./ast.ts";
 import type { ProjectConfig } from "./config.ts";
-import { draftToScript } from "./convert.ts";
 import { plainText } from "./inline.ts";
-import type { Sheet } from "./sheets.ts";
 import { RenpyExporter } from "../exporters/renpy.ts";
 
 export type Layer = "draft" | "play" | "renpy";
@@ -153,12 +151,6 @@ export function replaceDrafts(source: string, scripts: string[]): string {
     lines.splice(b.open, b.close - b.open + 1, ...script);
   }
   return lines.join("\n");
-}
-
-/** The rule converter for one passage, with what it is unsure of as notes on top. */
-export function draftByRules(prose: string, cfg: ProjectConfig, sheets: Sheet[] = []): string {
-  const c = draftToScript(prose, cfg, [], sheets);
-  return [...c.checks.map((x) => `// check: ${x}`), ...c.script.split("\n").filter((x) => !x.startsWith("// tag:"))].join("\n");
 }
 
 /** Back to Play: untouched chunks verbatim, everything else converted. */

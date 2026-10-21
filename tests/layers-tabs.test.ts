@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { draftBlocks, draftByRules, fromLayer, renpyToScript, replaceDrafts, toLayer } from "../src/core/layers.ts";
+import { draftBlocks, fromLayer, renpyToScript, replaceDrafts, toLayer } from "../src/core/layers.ts";
 import { example } from "./helpers.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,13 +18,13 @@ describe("layer tabs", () => {
     }
   });
 
-  it("keeps an edited line as draft prose until the tab changes, then converts it", () => {
+  it("keeps an edited line as draft prose until the tab changes, then swaps in the script", () => {
     const v = toLayer("draft", src, script, r.config);
     expect(v.text).toContain("“Go back upstairs,” Free says.");
     const edited = v.text.replace("“Go back upstairs,” Free says.", "“Go back down,” Free says.");
     const back = fromLayer(v, edited, r.config);
     expect(back).toContain("::: draft\n“Go back down,” Free says.\n:::");
-    const done = replaceDrafts(back, draftBlocks(back).map((b) => draftByRules(b.prose, r.config, r.sheets.map((x) => x.sheet))));
+    const done = replaceDrafts(back, draftBlocks(back).map(() => "FREE: Go back down."));
     expect(done).toContain("FREE: Go back down.");
     expect(done).not.toContain("::: draft");
   });

@@ -14,6 +14,10 @@ export interface FieldSpec {
   label: string;
   hint?: string;
   long?: boolean;
+  /** A dropdown. With `open`, the writer can also type their own value. */
+  choices?: string[];
+  open?: boolean;
+  colour?: boolean;
 }
 
 export interface SectionSpec {
@@ -32,6 +36,7 @@ export interface Sheet {
 }
 
 const f = (key: string, label: string, hint?: string, long = false): FieldSpec => ({ key, label, hint, long });
+const pick = (key: string, label: string, choices: string[], open = false): FieldSpec => ({ key, label, choices, open });
 
 export const SHEET_KINDS: Record<SheetKind, { label: string; plural: string; folder: string; sections: SectionSpec[] }> = {
   character: {
@@ -39,11 +44,11 @@ export const SHEET_KINDS: Record<SheetKind, { label: string; plural: string; fol
     plural: "Characters",
     folder: "characters",
     sections: [
-      { id: "identity", label: "Identity", fields: [f("display", "Shown as", "Name in the game"), f("nicknames", "Nicknames", "Comma separated: the old man, Mr. F"), f("pronouns", "Pronouns", "he / she / they"), f("role", "Role", "Lead, suspect, shopkeeper…")] },
-      { id: "look", label: "Look", fields: [f("appearance", "Appearance", "What a stranger notices", true), f("outfit", "Outfit"), f("color", "Colour", "#5b7bd5"), f("expressions", "Expressions", "neutral, smile, angry")] },
+      { id: "identity", label: "Identity", fields: [f("display", "Shown as", "Name in the game"), f("nicknames", "Nicknames", "Comma separated: the old man, Mr. F"), pick("gender", "Gender", ["Female", "Male", "Non-binary", "Unknown"]), pick("role", "Role", ["Protagonist", "Narrator", "Main", "Supporting", "Antagonist", "Suspect", "Witness", "Victim", "Background"], true)] },
+      { id: "look", label: "Look", fields: [f("appearance", "Appearance", "What a stranger notices", true), f("outfit", "Outfit"), { ...f("color", "Colour"), colour: true }, f("expressions", "Expressions", "neutral, smile, angry")] },
       { id: "voice", label: "Voice", fields: [f("speech", "How they talk", "Short sentences, never swears…", true), f("catchphrases", "Catchphrases"), f("never", "Words they never use"), f("sample", "Sample line", undefined, true)] },
       { id: "story", label: "Story", fields: [f("want", "Want"), f("need", "Need"), f("wound", "Wound"), f("secret", "Secret"), f("arc", "Arc", undefined, true), f("relations", "Relations", "Juu: sister. Tony: owes him money.", true)] },
-      { id: "game", label: "Game", fields: [f("id", "Code id", "Used in Ren'Py and file names"), f("image", "Ren'Py image tag"), f("face", "MV face", "Actor1, 0"), f("entrance", "Usual entrance side", "left / right")] },
+      { id: "game", label: "Game", fields: [f("id", "Code id", "Used in Ren'Py and file names"), f("image", "Ren'Py image tag"), f("face", "MV face", "Actor1, 0"), pick("entrance", "Usual entrance side", ["Left", "Right", "Centre"])] },
     ],
   },
   place: {
@@ -51,8 +56,8 @@ export const SHEET_KINDS: Record<SheetKind, { label: string; plural: string; fol
     plural: "Places",
     folder: "places",
     sections: [
-      { id: "identity", label: "Identity", fields: [f("nicknames", "Other names", "the old mill, the mill"), f("region", "Region")] },
-      { id: "look", label: "Look", fields: [f("description", "Description", undefined, true), f("variants", "Variants", "day, night, rain"), f("mood", "Mood")] },
+      { id: "identity", label: "Identity", fields: [f("nicknames", "Other names", "the old mill, the mill"), pick("setting", "Setting", ["Interior", "Exterior"]), f("region", "Region")] },
+      { id: "look", label: "Look", fields: [f("description", "Description", undefined, true), f("variants", "Variants", "day, night, rain"), pick("mood", "Mood", ["Calm", "Warm", "Tense", "Eerie", "Sad", "Hopeful", "Oppressive"], true)] },
       { id: "sound", label: "Sound", fields: [f("music", "Music cue"), f("ambience", "Ambience")] },
       { id: "story", label: "Story", fields: [f("history", "What happened here", undefined, true), f("who", "Who lives or works here")] },
       { id: "game", label: "Game", fields: [f("bg", "Ren'Py background", "Defaults to the place name"), f("map", "MV map id")] },
@@ -63,7 +68,7 @@ export const SHEET_KINDS: Record<SheetKind, { label: string; plural: string; fol
     plural: "Items",
     folder: "items",
     sections: [
-      { id: "identity", label: "Identity", fields: [f("nicknames", "Other names"), f("description", "Description", undefined, true)] },
+      { id: "identity", label: "Identity", fields: [pick("type", "Type", ["Clue", "Evidence", "Key item", "Document", "Consumable", "Equipment", "Keepsake"], true), f("nicknames", "Other names"), f("description", "Description", undefined, true)] },
       { id: "game", label: "Game", fields: [f("mvItem", "MV item id"), f("icon", "Icon")] },
     ],
   },
@@ -72,8 +77,8 @@ export const SHEET_KINDS: Record<SheetKind, { label: string; plural: string; fol
     plural: "Minigames",
     folder: "minigames",
     sections: [
-      { id: "design", label: "Design", fields: [f("goal", "Goal", "What the player tries to do", true), f("rules", "Rules", undefined, true), f("inputs", "Player actions", "Examine, pick, drag…")] },
-      { id: "outcome", label: "Outcome", fields: [f("win", "On win", "Where the story goes next"), f("lose", "On lose")] },
+      { id: "design", label: "Design", fields: [pick("type", "Type", ["Investigation", "Puzzle", "Interrogation", "Deduction", "Hidden object", "Timing", "Memory"], true), pick("difficulty", "Difficulty", ["Easy", "Medium", "Hard"]), f("goal", "Goal", "What the player tries to do", true), f("rules", "Rules", undefined, true), f("inputs", "Player actions", "Examine, pick, drag…")] },
+      { id: "outcome", label: "Outcome", fields: [f("win", "On win", "Where the story goes next"), f("lose", "On lose"), pick("retry", "After losing", ["Retry", "Continue anyway", "Game over"])] },
       { id: "data", label: "Data", fields: [f("reads", "Reads", "Flags, items, variables it checks"), f("writes", "Writes", "Flags, items, variables it sets")] },
       { id: "engine", label: "Engine", fields: [f("renpy", "Ren'Py screen or label"), f("mv", "MV plugin command")] },
     ],
@@ -120,6 +125,12 @@ export function parseSheet(text: string): Sheet | null {
     }
   }
   for (const k of Object.keys(sheet.fields)) sheet.fields[k] = sheet.fields[k].replace(/\n+$/, "");
+  // Older sheets said "pronouns: she"; the form now asks for gender.
+  if (sheet.fields.pronouns !== undefined && !sheet.fields.gender) {
+    const g = ({ he: "Male", she: "Female", they: "Non-binary" } as Record<string, string>)[sheet.fields.pronouns.trim().toLowerCase().split(/\W/)[0]];
+    if (g) sheet.fields.gender = g;
+    delete sheet.fields.pronouns;
+  }
   return sheet;
 }
 

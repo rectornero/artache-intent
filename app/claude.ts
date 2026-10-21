@@ -32,7 +32,7 @@ Rules:
 - Never change, add or drop the writer's words. Spoken words go into dialogue lines exactly as written; narration stays narration.
 - Each passage is converted on its own and returned in the same order.
 - Speech tags ("she says", "Edward agrees", "Tony mutters, pocketing the keys") name the speaker; drop pure tags, keep any action in them as narration.
-- Use the cast keys given (ALL CAPS) for speakers. Resolve pronouns and nicknames from the sheets and the story so far. A speaker you cannot identify for sure: pick the likeliest and add a line "// check: <why>" just above.
+- Use the cast keys given (ALL CAPS) for speakers. Work out who "he", "she" or "they" is from each character's gender, their nicknames and the story so far. A speaker you cannot identify for sure: pick the likeliest and add a line "// check: <why>" just above.
 - When the scene moves to a place that has a background, add [BG Name] (plus a tint if the prose gives a time of day) and its [MUSIC ...] if the place sheet has one.
 - When the prose triggers a minigame ("an Investigation minigame starts"), keep the sentence as narration if it reads as story, and add ">> MINIGAME: Name" after it.
 - Plain lines are spoken by the current narrator; don't prefix them.

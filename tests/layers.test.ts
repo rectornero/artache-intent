@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/core/config.ts";
-import { applyConversion, draftToScript } from "../src/core/convert.ts";
 import { parseScript } from "../src/core/parser.ts";
 import { compileProject } from "../src/project.ts";
 
@@ -47,40 +46,5 @@ describe("fenced layers", () => {
 
   it("flags an unclosed block", () => {
     expect(parseScript("::: draft\nHello", cfg).diagnostics.some((d) => d.level === "error")).toBe(true);
-  });
-});
-
-describe("rule converter", () => {
-  it("splits narration and tagged dialogue without rewording", () => {
-    const r = draftToScript("Free stops.\n\n“Go back upstairs,” he says, without looking at me.\n\n“Who called?” Tony asks. “Not me.”", cfg);
-    expect(r.script.split("\n")).toEqual([
-      "Free stops.",
-      "FREE: Go back upstairs.  // check speaker",
-      "// tag: he says, without looking at me.",
-      "TONY: Who called?",
-      "// tag: Tony asks.",
-      "TONY: Not me.",
-    ]);
-    expect(r.checks[0]).toContain("Guessed FREE");
-  });
-
-  it("leaves unattributed quotes for the writer", () => {
-    const r = draftToScript("“Hello?”", cfg);
-    expect(r.script).toBe("“Hello?”  // speaker unclear");
-    expect(r.checks[0]).toContain("Speaker unclear");
-  });
-
-  it("splits long narration at sentence ends", () => {
-    const long = "One sentence that is quite long and goes on. ".repeat(6).trim();
-    const lines = draftToScript(long, cfg).script.split("\n");
-    expect(lines.length).toBeGreaterThan(1);
-    expect(lines.join(" ")).toBe(long);
-  });
-
-  it("swaps the draft for script and keeps the prose", () => {
-    const src = "## A\n::: draft\nFree stops.\n:::\nEnd.";
-    const out = applyConversion(src, 2, "Free stops.");
-    expect(out).toBe("## A\nFree stops.\n::: was-draft\nFree stops.\n:::\nEnd.");
-    expect(parseScript(out, cfg).chapters[0].scenes[0].body.map((n) => n.n)).toEqual(["say", "original", "say"]);
   });
 });

@@ -2,7 +2,7 @@
 // from the scripts. Edits write the `.sheet` text back.
 
 import { useEffect, useState } from "react";
-import { parseSheet, serializeSheet, SHEET_KINDS, type Sheet, type Usage } from "../src/core/sheets.ts";
+import { parseSheet, serializeSheet, SHEET_KINDS, type FieldSpec, type Sheet, type Usage } from "../src/core/sheets.ts";
 
 interface Props {
   text: string;
@@ -77,11 +77,7 @@ export function SheetForm({ text, usage, onChange, onJump, onClose }: Props) {
                 {sec.fields.map((f) => (
                   <label key={f.key} className={f.long ? "long" : ""}>
                     <span>{f.label}</span>
-                    {f.long ? (
-                      <textarea value={sheet.fields[f.key] ?? ""} placeholder={f.hint} rows={3} onChange={(e) => setField(f.key, e.target.value)} />
-                    ) : (
-                      <input value={sheet.fields[f.key] ?? ""} placeholder={f.hint} onChange={(e) => setField(f.key, e.target.value)} />
-                    )}
+                    <FieldInput spec={f} value={sheet.fields[f.key] ?? ""} onChange={(v) => setField(f.key, v)} />
                   </label>
                 ))}
               </div>
@@ -95,5 +91,47 @@ export function SheetForm({ text, usage, onChange, onJump, onClose }: Props) {
         <textarea className="notes" value={sheet.notes.join("\n")} rows={3} placeholder="Anything else" onChange={(e) => set({ notes: e.target.value.split("\n") })} />
       </section>
     </div>
+  );
+}
+
+const OWN = "\u0000own";
+
+/** Text, long text, a colour, or a dropdown (that may also take the writer's own value). */
+function FieldInput({ spec, value, onChange }: { spec: FieldSpec; value: string; onChange: (v: string) => void }) {
+  const [own, setOwn] = useState(false);
+  if (spec.colour) {
+    const hex = /^#[0-9a-f]{6}$/i.test(value) ? value : "#888888";
+    return (
+      <span className="colour-field">
+        <input type="color" value={hex} onChange={(e) => onChange(e.target.value)} aria-label={spec.label} />
+        <code>{value || "none"}</code>
+        {value && <button className="icon" onClick={() => onChange("")} aria-label="Clear colour">✕</button>}
+      </span>
+    );
+  }
+  if (spec.choices) {
+    const listed = !value || spec.choices.some((c) => c.toLowerCase() === value.toLowerCase());
+    if (spec.open && (own || !listed)) {
+      return (
+        <span className="own-field">
+          <input value={value} autoFocus={own} placeholder="Your own" onChange={(e) => onChange(e.target.value)} />
+          <button className="icon" onClick={() => { setOwn(false); onChange(""); }} aria-label="Back to the list" title="Back to the list">▾</button>
+        </span>
+      );
+    }
+    const current = spec.choices.find((c) => c.toLowerCase() === value.toLowerCase()) ?? value;
+    return (
+      <select value={current} onChange={(e) => (e.target.value === OWN ? (setOwn(true), onChange("")) : onChange(e.target.value))}>
+        <option value="">—</option>
+        {!listed && <option value={value}>{value}</option>}
+        {spec.choices.map((c) => <option key={c} value={c}>{c}</option>)}
+        {spec.open && <option value={OWN}>Your own…</option>}
+      </select>
+    );
+  }
+  return spec.long ? (
+    <textarea value={value} placeholder={spec.hint} rows={3} onChange={(e) => onChange(e.target.value)} />
+  ) : (
+    <input value={value} placeholder={spec.hint} onChange={(e) => onChange(e.target.value)} />
   );
 }

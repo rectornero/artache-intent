@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { draftToScript } from "../src/core/convert.ts";
 import { detectMinigames, newSheet, parseSheet, serializeSheet, sheetUsage } from "../src/core/sheets.ts";
 import { compileProject } from "../src/project.ts";
 
-const tony = "@character Tony\n\n## Identity\nnicknames: the neighbour\npronouns: he\n\n## Look\nexpressions: neutral, nervous\nappearance: Forties.\n  Ironed shirt.\n";
-const juu = "@character Juu\npronouns: she\n";
+const tony = "@character Tony\n\n## Identity\nnicknames: the neighbour\ngender: Male\n\n## Look\nexpressions: neutral, nervous\nappearance: Forties.\n  Ironed shirt.\n";
 const hall = "@place Stairwell\nnicknames: the landing\nvariants: day, night\nmusic: building\n";
 
 describe("sheets", () => {
@@ -41,16 +39,7 @@ describe("sheets", () => {
     expect(detectMinigames("Now an Investigation minigame gets triggered. Later the Lockpick puzzle.")).toEqual(["Investigation", "Lockpick"]);
     expect(detectMinigames(">> MINIGAME: Deduction")).toEqual(["Deduction"]);
   });
-
-  it("uses pronouns, nicknames and places when converting a draft", () => {
-    const r = compileProject({}, { "t.sheet": tony, "j.sheet": juu, "h.sheet": hall }, ["renpy"]);
-    const sheets = r.sheets.map((x) => x.sheet);
-    const c = draftToScript("The landing at night. Juu and the neighbour wait.\n\n“Late,” she says.\n\n“So what?” he says.\n\nAn Investigation minigame starts.", r.config, [], sheets);
-    expect(c.script).toContain("[BG Stairwell night]");
-    expect(c.script).toContain("[MUSIC building]");
-    expect(c.script).toContain("JUU: Late.");
-    expect(c.script).toContain("TONY: So what?");
-    expect(c.script).not.toContain("check speaker");
-    expect(c.script).toContain(">> MINIGAME: Investigation");
+  it("reads an old pronouns line as gender", () => {
+    expect(parseSheet("@character Juu\npronouns: she")!.fields).toEqual({ gender: "Female" });
   });
 });

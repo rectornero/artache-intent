@@ -130,16 +130,16 @@ A sheet is one plain-text file per Character, Place, Item or Minigame, kept in
 Draft, Play and Ren'Py show the same file. Draft shows dialogue as prose and `::: draft`
 passages as plain text, without fences. New or edited prose stays as written in a
 `::: draft` passage while you're in Draft; leaving the tab converts every draft passage
-in the file at once, and the toast offers Undo. In a draft passage, one line is one
+in the file at once, and the message that follows offers Undo. In a draft passage, one line is one
 paragraph.
 
-Conversion uses Claude when an Anthropic API key is added in Settings → Claude (the key
-stays on the device, never in the project), and the built-in rules otherwise or if
-Claude fails. Lines either converter is unsure of get a `// check:` note.
+Claude does the converting, on the writer's own Anthropic API key (Settings → Claude;
+the key stays on the device, never in the project). Without a key, or if Claude fails,
+passages stay as prose; nothing is guessed. Lines Claude is unsure of get a `// check:` note.
 
 ## Identity
 nicknames: the neighbour
-pronouns: he
+gender: Male
 
 ## Look
 appearance: Forties, ironed shirt.
@@ -157,6 +157,8 @@ expressions: neutral, nervous
 - Names on a sheet are underlined in the editor. Minigames mentioned in prose
   ("an Investigation minigame") without a sheet show as stubs.
 - `noLink` in `intent.json` lists names that stay plain text.
-- Draft conversion reads sheets: nicknames and pronouns pick speakers, place
-  names add `[BG …]` and the place's `[MUSIC …]`, minigame phrases add
-  `>> MINIGAME: Name`.
+- Claude reads the sheets when converting drafts: nicknames and gender help pick
+  speakers, places add `[BG …]` and their `[MUSIC …]`, minigames add `>> MINIGAME: Name`.
+- Fields with a short list of answers (gender, role, entrance side, setting, mood,
+  item type, minigame type and difficulty) are dropdowns in the form; some also take
+  a value of your own. An old `pronouns:` line is read as gender.
