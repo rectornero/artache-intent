@@ -56,10 +56,13 @@ button.ghost { padding: 3px 8px; border-radius: 6px; color: var(--muted); font-s
   padding: 8px 0 16px;
 }
 .side-head {
-  display: flex; align-items: center;
-  padding: 10px 12px 4px;
-  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+  display: flex; align-items: center; gap: 8px;
+  margin: 10px 0 2px; padding: 10px 12px 4px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text);
 }
+.side-head + * { margin-top: 2px; }
+.side-head:not(:first-child) { border-top: 1px solid var(--border); padding-top: 14px; }
+.side-head .icon-svg { color: var(--accent); flex: none; }
 .files, .outline { list-style: none; margin: 0; padding: 0 6px; }
 .files button, .outline button {
   display: block; width: 100%; text-align: left;
@@ -176,6 +179,10 @@ pre.code.wrap { white-space: pre-wrap; }
   .topbar { gap: 8px; padding: 0 10px; }
   .topbar .spacer { display: none; }
   .status { display: none; }
+  .app { padding-bottom: 0; }
+  .side-head { font-size: 12px; padding-left: 16px; padding-right: 16px; }
+  .files button { padding: 9px 12px; font-size: 16px; }
+  .sheet-group-head { padding-left: 18px; font-size: 13px; }
 }
 
 /* Layer stripes in the editor margin: draft prose, engine code, kept originals. */
@@ -228,7 +235,8 @@ pre.code.wrap { white-space: pre-wrap; }
 .editor .cm-sheet-stub:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 
 .sheet-group { margin-bottom: 4px; }
-.sheet-group-head { display: flex; align-items: center; font-size: 12px; color: var(--muted); padding: 6px 14px 2px; }
+.sheet-group-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); padding: 8px 14px 2px; }
+.sheet-group-head .icon-svg { color: var(--kind); }
 .files button .badge, .sheet-head .badge { margin-left: 8px; }
 .badge { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: .02em; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); vertical-align: 1px; white-space: nowrap; }
 .files button.stub { color: var(--muted); font-style: italic; }
@@ -244,10 +252,15 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .sheet-name:focus { outline: none; border-bottom-color: var(--border); }
 .sheet-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px 16px; margin-bottom: 12px; }
 .panel .sheet-card { background: var(--bg); }
-.sheet-card h4 { margin: 0 0 8px; font-size: 13px; font-weight: 700; }
+.sheet-card { border-left: 4px solid color-mix(in srgb, var(--kind, var(--accent)) 55%, transparent); }
+.sheet-card h4 { margin: 0 0 12px; font-family: var(--font-display); font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.sheet-card .sec-toggle { width: 100%; gap: 10px; font-family: inherit; }
+.sheet-card .caret { margin-left: auto; }
+.sec-icon { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; flex: none;
+  background: color-mix(in srgb, var(--kind, var(--accent)) 14%, transparent); color: var(--kind, var(--accent)); }
 .sheet-card.closed h4 { margin: 0; }
 .sec-toggle { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; }
-.sec-toggle .caret { color: var(--muted); width: 10px; }
+.sec-toggle .caret { color: var(--muted); width: 12px; }
 .sheet-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 14px; }
 .sheet-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .sheet-fields label.long { grid-column: 1 / -1; }

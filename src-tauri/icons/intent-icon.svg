@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <title>Artache Intent</title>
+  <rect width="1024" height="1024" rx="224" fill="#13224b"/>
+  <g transform="translate(512 540) rotate(-16)">
+    <path d="M-330,0 A330 118 0 0 1 330,0" fill="none" stroke="#d7182a" stroke-width="16" stroke-linecap="round" opacity=".55"/>
+  </g>
+  <path d="M300,236 a36 36 0 0 1 36-36 H614 L724,310 V788 a36 36 0 0 1 -36 36 H336 a36 36 0 0 1 -36-36 Z" fill="#faf8f3"/>
+  <path d="M614,200 V274 a36 36 0 0 0 36,36 H724 Z" fill="#e3dccb"/>
+  <rect x="476" y="384" width="72" height="292" fill="#13224b"/>
+  <rect x="410" y="366" width="204" height="36" rx="6" fill="#13224b"/>
+  <rect x="410" y="658" width="204" height="36" rx="6" fill="#13224b"/>
+  <g transform="translate(512 540) rotate(-16)">
+    <path d="M330,0 A330 118 0 0 1 -330,0" fill="none" stroke="#d7182a" stroke-width="16" stroke-linecap="round"/>
+    <g transform="translate(196 -95)">
+      <path d="M0,-104 C18,-18 18,-18 104,0 C18,18 18,18 0,104 C-18,18 -18,18 -104,0 C-18,-18 -18,-18 0,-104 Z" fill="#d7182a" stroke="#faf8f3" stroke-width="12" stroke-linejoin="round"/>
+      
+    </g>
+  </g>
+</svg>

@@ -2,6 +2,7 @@
 // from the scripts. Edits write the `.sheet` text back.
 
 import { useEffect, useState } from "react";
+import { Icon } from "./Icon.tsx";
 import { parseSheet, serializeSheet, SHEET_KINDS, type FieldSpec, type Sheet, type Usage } from "../src/core/sheets.ts";
 
 interface Props {
@@ -45,7 +46,7 @@ export function SheetForm({ text, usage, onChange, onJump, onClose }: Props) {
 
       {usage && (
         <section className="sheet-card usage">
-          <h4>Usage</h4>
+          <h4><span className="sec-icon"><Icon name="usage" /></span>Usage</h4>
           {usage.scenes.length ? (
             <div className="usage-scenes">
               {usage.scenes.map((s, k) => (
@@ -68,8 +69,9 @@ export function SheetForm({ text, usage, onChange, onJump, onClose }: Props) {
           <section key={sec.id} className={`sheet-card ${isOpen ? "" : "closed"}`}>
             <h4>
               <button className="sec-toggle" onClick={() => setOpen({ ...open, [sec.id]: !isOpen })} aria-expanded={isOpen}>
-                <span className="caret">{isOpen ? "▾" : "▸"}</span>
+                <span className="sec-icon"><Icon name={sec.id} /></span>
                 {sec.label}
+                <span className="caret">{isOpen ? "▾" : "▸"}</span>
               </button>
             </h4>
             {isOpen && (
@@ -87,7 +89,7 @@ export function SheetForm({ text, usage, onChange, onJump, onClose }: Props) {
       })}
 
       <section className="sheet-card">
-        <h4>Notes</h4>
+        <h4><span className="sec-icon"><Icon name="notes" /></span>Notes</h4>
         <textarea className="notes" value={sheet.notes.join("\n")} rows={3} placeholder="Anything else" onChange={(e) => set({ notes: e.target.value.split("\n") })} />
       </section>
     </div>

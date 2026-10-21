@@ -42,7 +42,7 @@ const ARTACHE: Brand = {
   product: "Intent",
   tagline: "With AI. By People.",
   logo: "brand/artache-logo.png",
-  icon: "brand/artache-star.png",
+  icon: "brand/intent-icon.svg",
 };
 const ARTACHE_DARK: Brand = { ...ARTACHE, logo: "brand/artache-logo-dark.png" };
 

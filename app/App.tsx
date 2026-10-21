@@ -9,6 +9,7 @@ import { claudeConvert, explainFailure, loadApiKey, saveApiKey } from "./claude.
 import { parseScript } from "../src/core/parser.ts";
 import { BookView, PreviewNodes } from "./Preview.tsx";
 import { SheetForm, isStub } from "./SheetForm.tsx";
+import { Icon } from "./Icon.tsx";
 import type { LinkTarget } from "./intentMode.ts";
 import { detectMinigames, newSheet, sheetFileName, sheetNames, sheetUsage, SHEET_KINDS, type SheetKind } from "../src/core/sheets.ts";
 import { SAMPLES, newProject } from "./samples.ts";
@@ -314,7 +315,7 @@ export function App() {
 
       <aside className="sidebar">
         <div className="side-head">
-          Files
+          <Icon name="files" />Scripts
           <span className="spacer" />
           <button className="ghost" onClick={addFile} title="New script">+ script</button>
         </div>
@@ -328,7 +329,7 @@ export function App() {
           ))}
         </ul>
         <div className="side-head">
-          Sheets
+          <Icon name="sheets" />Sheets
           <span className="spacer" />
           <select className="ghost add-sheet" value="" aria-label="New sheet" onChange={(e) => { const k = e.target.value as SheetKind; e.target.value = ""; const n = k && prompt(`New ${SHEET_KINDS[k].label.toLowerCase()} name`); if (k && n) createSheet(k, n.trim()); }}>
             <option value="">+ sheet</option>
@@ -341,7 +342,7 @@ export function App() {
           if (!mine.length && !stubs.length) return null;
           return (
             <div key={k} className="sheet-group">
-              <div className="sheet-group-head"><i className={`kind-dot k-${k}`} />{SHEET_KINDS[k].plural}</div>
+              <div className={`sheet-group-head k-${k}`}><Icon name={k} size={14} />{SHEET_KINDS[k].plural}</div>
               <ul className="files">
                 {stubs.map((l) => (
                   <li key={l.name}><button className="stub" onClick={() => createSheet(k, l.name)} title="Mentioned in your script. Click to make its sheet">{l.name}<span className="badge">new</span></button></li>
@@ -357,6 +358,9 @@ export function App() {
             </div>
           );
         })}
+        <div className="side-head">
+          <Icon name="project" />Project
+        </div>
         <div className="side-actions">
           <button className="ghost" onClick={addProject}>New project</button>
           <button className="ghost" onClick={importFiles}>Open .intent file</button>
@@ -370,7 +374,7 @@ export function App() {
         </div>
         {prefs.showOutline && outline.length > 0 && (
           <>
-            <div className="side-head">Outline</div>
+            <div className="side-head"><Icon name="outline" />Outline</div>
             <ul className="outline">
               {outline.map((o, k) => (
                 <li key={k} style={{ paddingLeft: 8 + o.depth * 14 }}>
