@@ -139,6 +139,30 @@ export async function claudeUpdate(apiKey: string, model: ClaudeModel, req: Upda
   return (JSON.parse(text) as { text: string }).text.replace(/\s+$/, "") + "\n";
 }
 
+const PROMPT_SYSTEM = `You write prompts for generative tools from a game writer's sheet.
+- Image prompts are for an image generator: one paragraph, concrete and visual (subject, look, clothing, pose or framing, setting, light, colour, mood). Characters: a visual novel character sprite, full body, plain background unless the sheet says otherwise. Places: a visual novel background, no people unless the sheet says so. No camera brand names, no artist names.
+- Song prompts are for a music generator: genre, mood, tempo, instruments, structure, and what it should evoke for this character or place. Instrumental unless the sheet asks for lyrics.
+- Use only what the sheet says or clearly implies; don't invent backstory. Give a fresh angle if earlier prompts are listed.
+- Write in English. Return just the prompt.`;
+
+/** One new image or song prompt drawn from a sheet. */
+export async function claudePrompt(apiKey: string, model: ClaudeModel, kind: "image" | "song", sheet: Sheet, earlier: string[]): Promise<string> {
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  const fields = Object.entries(sheet.fields).filter(([k, v]) => v.trim() && !k.endsWith("Prompts")).map(([k, v]) => `${k}: ${v}`).join("\n");
+  const message = await client.beta.messages.create({
+    model,
+    max_tokens: 4000,
+    ...(model === "claude-haiku-5-5" ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
+    output_config: { effort: "low", format: { type: "json_schema", schema: { type: "object", properties: { prompt: { type: "string" } }, required: ["prompt"], additionalProperties: false } } },
+    system: PROMPT_SYSTEM,
+    messages: [{ role: "user", content: `Write one ${kind} prompt for this ${sheet.kind}.\n\n@${sheet.kind} ${sheet.name}\n${fields || "(no details yet)"}${sheet.notes.length ? `\nNotes: ${sheet.notes.join(" ")}` : ""}${earlier.length ? `\n\nEarlier prompts:\n${earlier.map((p) => `- ${p}`).join("\n")}` : ""}` }],
+  });
+  if (message.stop_reason === "refusal") throw new Error("Claude declined this prompt");
+  const text = message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
+  return (JSON.parse(text) as { prompt: string }).prompt.trim();
+}
+
 /** A failure in words a writer can act on. */
 export function explainFailure(e: unknown): string {
   const status = (e as { status?: number })?.status;

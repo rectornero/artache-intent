@@ -5,7 +5,7 @@ import { slug } from "../src/core/parser.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
 import { toLayer, type Layer } from "../src/core/layers.ts";
-import { CLAUDE_MODELS, claudeUpdate, explainFailure, loadApiKey, loadModel, saveApiKey, saveModel, type ClaudeModel } from "./claude.ts";
+import { CLAUDE_MODELS, claudePrompt, claudeUpdate, explainFailure, loadApiKey, loadModel, saveApiKey, saveModel, type ClaudeModel } from "./claude.ts";
 import { isVersionFile, markSynced, neighbours, pairOf, pairState, inSync, readSync, SYNC_FILE, versionFile, type PairState, type Version } from "../src/core/sync.ts";
 import { lineDiff } from "../src/core/diff.ts";
 
@@ -19,7 +19,7 @@ import { Icon } from "./Icon.tsx";
 import { HistoryPanel } from "./HistoryPanel.tsx";
 import { saveSnapshot } from "./history.ts";
 import type { LinkTarget } from "./intentMode.ts";
-import { detectMinigames, newSheet, sheetFileName, sheetNames, sheetUsage, SHEET_KINDS, type SheetKind } from "../src/core/sheets.ts";
+import { type Sheet, detectMinigames, newSheet, sheetFileName, sheetNames, sheetUsage, SHEET_KINDS, type SheetKind } from "../src/core/sheets.ts";
 import { SAMPLES, newProject } from "./samples.ts";
 import { deliverExport, whenSaveFails, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, savePrefs, saveFileAs, saveProjects, saveToFolder, type Project } from "./storage.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPrefs } from "./themes.ts";
@@ -167,6 +167,17 @@ export function App() {
     say(`${VERSION_NAMES[r.to]} updated.`, 8000, { label: "Undo", run: () => setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files: { ...p.files, [f]: r.before } } : p))) });
   };
   const switchLayer = (l: Layer) => setLayer(l);
+  const draftPrompt = async (kind: "image" | "song", sheet: Sheet, earlier: string[]) => {
+    if (!apiKey) {
+      say("Drafting prompts needs your Claude key.", 8000, { label: "Settings", run: () => setSettingsOpen(true) });
+      throw new Error("Add your Claude key in Settings first.");
+    }
+    try {
+      return await claudePrompt(apiKey, model, kind, sheet, earlier);
+    } catch (e) {
+      throw new Error(`Claude couldn't write it: ${explainFailure(e)}.`);
+    }
+  };
 
   const say = (msg: string, ms = 2500, action: ToastAction | null = null) => {
     setToast(msg);
@@ -502,6 +513,7 @@ export function App() {
               usage={sheetUsageFor(file)}
               onChange={update}
               onJump={(f, line) => { setFileName(f); setJump({ line, n: Date.now() }); }}
+              onDraftPrompt={draftPrompt}
             />
           </div>
         ) : (
@@ -562,6 +574,7 @@ export function App() {
                 onChange={(t) => setFile(sheetFile, t)}
                 onJump={(f, line) => { setFileName(f); setJump({ line, n: Date.now() }); setMobile("write"); }}
                 onClose={() => { setSheetFile(null); setTab("play"); }}
+                onDraftPrompt={draftPrompt}
               />
             ) : tab === "play" || tab === "book" || tab === "sheet" ? (
               focus ? (

@@ -264,7 +264,7 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .sec-toggle .caret { color: var(--muted); width: 12px; }
 .sheet-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 14px; }
 .sheet-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
-.sheet-fields label.long { grid-column: 1 / -1; }
+.sheet-fields label.long, .sheet-fields div.long { grid-column: 1 / -1; }
 .sheet-fields input, .sheet-fields textarea, .sheet-card textarea.notes { font: inherit; font-size: 14px; color: var(--text); background: var(--panel2); border: 1px solid transparent; border-radius: 10px; padding: 8px 10px; resize: vertical; }
 .sheet-card textarea.notes { width: 100%; }
 .sheet-fields input:focus, .sheet-fields textarea:focus, .sheet-card textarea.notes:focus { outline: none; border-color: var(--accent); background: var(--panel); }
@@ -379,3 +379,13 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .side-btn { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); font-size: 13px; color: var(--text); }
 .side-btn:hover { border-color: var(--accent); color: var(--accent); }
 .editor .cm-ilayer-fence { font-family: var(--font-ui); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* Image and song prompts on sheets */
+.prompt-list { display: flex; flex-direction: column; gap: 10px; }
+.prompt-card { border: 1px solid var(--border); border-radius: 12px; padding: 8px; background: var(--panel); }
+.prompt-card textarea { width: 100%; box-sizing: border-box; border: 0 !important; background: transparent !important; padding: 4px 6px !important; font-size: 14px; line-height: 1.5; resize: vertical; }
+.prompt-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.prompt-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; }
+.prompt-actions button.quiet { border-color: transparent; color: var(--muted); }
+.prompt-add { display: flex; gap: 8px; flex-wrap: wrap; }
+.prompt-add .claude-go { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 999px; padding: 6px 14px; font-weight: 600; }

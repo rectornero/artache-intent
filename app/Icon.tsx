@@ -20,6 +20,9 @@ const PATHS: Record<string, string> = {
   usage: "M4 20V10 M10 20V4 M16 20v-7 M22 20H2",
   notes: "M5 3h14v18H5z M8 8h8 M8 12h8 M8 16h5",
   project: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+  images: "M4 5h16v14H4z M4 15l4-4 4 4 3-3 5 5 M15.5 9.5h.01",
+  songs: "M9 18V6l11-2v12 M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0z M20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
+  copy: "M8 8h12v12H8z M16 8V4H4v12h4",
   history: "M3 12a9 9 0 1 0 3-6.7L3 8 M3 3v5h5 M12 7v5l3 2",
   outline: "M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01",
 };

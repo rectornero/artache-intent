@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon.tsx";
-import { parseSheet, serializeSheet, SHEET_KINDS, type FieldSpec, type Sheet, type Usage } from "../src/core/sheets.ts";
+import { joinPrompts, parseSheet, serializeSheet, SHEET_KINDS, splitPrompts, type FieldSpec, type Sheet, type Usage } from "../src/core/sheets.ts";
 
 interface Props {
   text: string;
@@ -11,13 +11,15 @@ interface Props {
   onChange: (text: string) => void;
   onJump: (file: string, line: number) => void;
   onClose?: () => void;
+  /** Claude drafts a new prompt from the sheet; throws with a message the form shows. */
+  onDraftPrompt?: (kind: "image" | "song", sheet: Sheet, earlier: string[]) => Promise<string>;
 }
 
 export function isStub(s: Sheet): boolean {
   return Object.values(s.fields).every((v) => !v.trim());
 }
 
-export function SheetForm({ text, usage, onChange, onJump, onClose }: Props) {
+export function SheetForm({ text, usage, onChange, onJump, onClose, onDraftPrompt }: Props) {
   // The form keeps its own copy so a half-typed value (a trailing new line) survives
   // the round trip through text; outside edits to the text still come in.
   const [sheet, setSheet] = useState(() => parseSheet(text));
@@ -77,10 +79,17 @@ export function SheetForm({ text, usage, onChange, onJump, onClose }: Props) {
             {isOpen && (
               <div className="sheet-fields">
                 {sec.fields.map((f) => (
-                  <label key={f.key} className={f.long ? "long" : ""}>
-                    <span>{f.label}</span>
-                    <FieldInput spec={f} value={sheet.fields[f.key] ?? ""} onChange={(v) => setField(f.key, v)} />
-                  </label>
+                  f.prompts ? (
+                    <div key={f.key} className="long">
+                      <PromptList kind={f.prompts} value={sheet.fields[f.key] ?? ""} onChange={(v) => setField(f.key, v)}
+                        draft={onDraftPrompt && (() => onDraftPrompt(f.prompts!, sheet, splitPrompts(sheet.fields[f.key])))} />
+                    </div>
+                  ) : (
+                    <label key={f.key} className={f.long ? "long" : ""}>
+                      <span>{f.label}</span>
+                      <FieldInput spec={f} value={sheet.fields[f.key] ?? ""} onChange={(v) => setField(f.key, v)} />
+                    </label>
+                  )
                 ))}
               </div>
             )}
@@ -135,5 +144,53 @@ function FieldInput({ spec, value, onChange }: { spec: FieldSpec; value: string;
     <textarea value={value} placeholder={spec.hint} rows={3} onChange={(e) => onChange(e.target.value)} />
   ) : (
     <input value={value} placeholder={spec.hint} onChange={(e) => onChange(e.target.value)} />
+  );
+}
+
+/** Image or song prompts: write your own or let Claude draft one from the sheet; copy with one tap. */
+function PromptList({ kind, value, onChange, draft }: { kind: "image" | "song"; value: string; onChange: (v: string) => void; draft?: () => Promise<string> }) {
+  const list = splitPrompts(value);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState<number | null>(null);
+  const set = (i: number, v: string) => onChange(joinPrompts(list.map((p, k) => (k === i ? v : p))));
+  const copy = async (i: number) => {
+    try {
+      await navigator.clipboard.writeText(list[i]);
+      setCopied(i);
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      setError("Copy isn't allowed here; select the text instead.");
+    }
+  };
+  return (
+    <div className="prompt-list">
+      {list.map((p, i) => (
+        <div key={i} className="prompt-card">
+          <textarea value={p} rows={3} onChange={(e) => set(i, e.target.value)} aria-label={`${kind} prompt ${i + 1}`} />
+          <div className="prompt-actions">
+            <button onClick={() => void copy(i)}><Icon name="copy" size={14} />{copied === i ? "Copied" : "Copy"}</button>
+            <button className="quiet" onClick={() => onChange(joinPrompts(list.filter((_, k) => k !== i)))}>Remove</button>
+          </div>
+        </div>
+      ))}
+      <div className="prompt-add">
+        {draft && (
+          <button className="claude-go" disabled={busy} onClick={async () => {
+            setBusy(true);
+            setError("");
+            try {
+              onChange(joinPrompts([...list, await draft()]));
+            } catch (e) {
+              setError(e instanceof Error ? e.message : String(e));
+            } finally {
+              setBusy(false);
+            }
+          }}>{busy ? "Claude is writing…" : `✦ Draft ${kind === "image" ? "an image" : "a song"} prompt`}</button>
+        )}
+        <button className="side-btn" onClick={() => onChange(`${value ? `${value}\n---\n` : ""}${kind === "image" ? "Describe the picture" : "Describe the music"}`)}>+ Write my own</button>
+      </div>
+      {error && <p className="warn-text">{error}</p>}
+    </div>
   );
 }

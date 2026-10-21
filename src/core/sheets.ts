@@ -18,6 +18,8 @@ export interface FieldSpec {
   choices?: string[];
   open?: boolean;
   colour?: boolean;
+  /** A list of image or song prompts, kept in one field and split by `---` lines. */
+  prompts?: "image" | "song";
 }
 
 export interface SectionSpec {
@@ -36,6 +38,15 @@ export interface Sheet {
 }
 
 const f = (key: string, label: string, hint?: string, long = false): FieldSpec => ({ key, label, hint, long });
+const promptSections = (): SectionSpec[] => [
+  { id: "images", label: "Image prompts", fields: [{ key: "imagePrompts", label: "Image prompts", prompts: "image" }] },
+  { id: "songs", label: "Song prompts", fields: [{ key: "songPrompts", label: "Song prompts", prompts: "song" }] },
+];
+
+/** Prompts stored in one field, one per `---`-separated block. */
+export const splitPrompts = (v: string | undefined): string[] => (v ?? "").split(/\n---\n/).map((x) => x.trim()).filter(Boolean);
+export const joinPrompts = (list: string[]): string => list.map((x) => x.trim()).filter(Boolean).join("\n---\n");
+
 const pick = (key: string, label: string, choices: string[], open = false): FieldSpec => ({ key, label, choices, open });
 
 export const SHEET_KINDS: Record<SheetKind, { label: string; plural: string; folder: string; sections: SectionSpec[] }> = {
@@ -48,6 +59,7 @@ export const SHEET_KINDS: Record<SheetKind, { label: string; plural: string; fol
       { id: "look", label: "Look", fields: [f("appearance", "Appearance", "What a stranger notices", true), f("outfit", "Outfit"), { ...f("color", "Colour"), colour: true }, f("expressions", "Expressions", "neutral, smile, angry")] },
       { id: "voice", label: "Voice", fields: [f("speech", "How they talk", "Short sentences, never swears…", true), f("catchphrases", "Catchphrases"), f("never", "Words they never use"), f("sample", "Sample line", undefined, true)] },
       { id: "story", label: "Story", fields: [f("want", "Want"), f("need", "Need"), f("wound", "Wound"), f("secret", "Secret"), f("arc", "Arc", undefined, true), f("relations", "Relations", "Juu: sister. Tony: owes him money.", true)] },
+      ...promptSections(),
       { id: "game", label: "Game", fields: [f("id", "Code id", "Used in Ren'Py and file names"), f("image", "Ren'Py image tag"), f("face", "MV face", "Actor1, 0"), pick("entrance", "Usual entrance side", ["Left", "Right", "Centre"])] },
     ],
   },
@@ -60,6 +72,7 @@ export const SHEET_KINDS: Record<SheetKind, { label: string; plural: string; fol
       { id: "look", label: "Look", fields: [f("description", "Description", undefined, true), f("variants", "Variants", "day, night, rain"), pick("mood", "Mood", ["Calm", "Warm", "Tense", "Eerie", "Sad", "Hopeful", "Oppressive"], true)] },
       { id: "sound", label: "Sound", fields: [f("music", "Music cue"), f("ambience", "Ambience")] },
       { id: "story", label: "Story", fields: [f("history", "What happened here", undefined, true), f("who", "Who lives or works here")] },
+      ...promptSections(),
       { id: "game", label: "Game", fields: [f("bg", "Ren'Py background", "Defaults to the place name"), f("map", "MV map id")] },
     ],
   },
