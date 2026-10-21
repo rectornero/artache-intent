@@ -349,3 +349,11 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .diff-add { background: color-mix(in srgb, #2f8f5b 14%, transparent); }
 .diff-del { background: color-mix(in srgb, var(--accent) 12%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--accent) 50%, transparent); }
 .history .empty { padding: 20px 0; text-align: center; }
+
+/* Draft, Play and Code out of step: a dot on the tab and a bar above the text */
+.sync-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #d99a1e; margin-left: 6px; vertical-align: middle; flex: none; }
+.sync-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 14px; font-size: 13px; background: color-mix(in srgb, #d99a1e 10%, var(--panel)); border-bottom: 1px solid color-mix(in srgb, #d99a1e 30%, var(--border)); }
+.sync-bar span { flex: 1; min-width: 180px; }
+.sync-bar .sync-dot { margin-left: 0; }
+.sync-bar button.claude-go { margin-left: 0; order: 0; background: var(--accent); color: var(--accent-text); border: 0; border-radius: 999px; padding: 5px 12px; font-weight: 600; }
+.review-diff { max-height: 60vh; }

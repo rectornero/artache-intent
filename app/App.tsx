@@ -4,8 +4,12 @@ import { conditionText } from "../src/core/condition.ts";
 import { slug } from "../src/core/parser.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
-import { draftBlocks, fromLayer, replaceDrafts, toLayer, type Layer, type LayerView } from "../src/core/layers.ts";
-import { CLAUDE_MODELS, claudeConvert, explainFailure, loadApiKey, loadModel, remembered, saveApiKey, saveModel, type ClaudeModel } from "./claude.ts";
+import { toLayer, type Layer } from "../src/core/layers.ts";
+import { CLAUDE_MODELS, claudeUpdate, explainFailure, loadApiKey, loadModel, saveApiKey, saveModel, type ClaudeModel } from "./claude.ts";
+import { isVersionFile, markSynced, neighbours, pairOf, pairState, inSync, readSync, SYNC_FILE, versionFile, type Version } from "../src/core/sync.ts";
+import { lineDiff } from "../src/core/diff.ts";
+
+const VERSION_NAMES: Record<Version, string> = { draft: "Draft", play: "Play", renpy: "Code" };
 
 const DRAFT_HINT = "Write freely here, like a book.";
 import { parseScript } from "../src/core/parser.ts";
@@ -56,13 +60,12 @@ export function App() {
   const [menu, setMenu] = useState<{ x: number; y: number; text: string; link?: LinkTarget } | null>(null);
   // Seamless layer tabs: the file seen as Draft, Play (the source) or Ren'Py.
   const [layer, setLayer] = useState<Layer>("play");
-  const [view, setView] = useState<{ key: string; v: LayerView; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toastAction, setToastAction] = useState<ToastAction | null>(null);
   const [apiKey, setApiKey] = useState(loadApiKey);
   const [model, setModel] = useState<ClaudeModel>(loadModel);
   const [historyVersion, setHistoryVersion] = useState(0);
-  const [reviewing, setReviewing] = useState<{ src: string; items: Array<{ k: number; prose: string; script: string }>; scripts: Array<string | null> } | null>(null);
+  const [reviewing, setReviewing] = useState<{ from: Version; to: Version; before: string; after: string; fromText: string } | null>(null);
 
   const theme = activeTheme(prefs);
   useEffect(() => {
@@ -85,72 +88,66 @@ export function App() {
   const update = (text: string) =>
     setProjects((list) => list.map((p) => (p.id === project.id ? { ...p, files: { ...p.files, [file]: text } } : p)));
 
-  const viewKey = `${project.id}/${file}/${layer}`;
-  const activeView = layer !== "play" && view?.key === viewKey ? view : null;
-  // Build the view when the tab or file changes; while typing it stays put.
-  useEffect(() => {
-    if (layer === "play" || !file.endsWith(".intent") || !ok) return;
-    if (view?.key === viewKey) return;
-    const src = project.files[file] ?? "";
-    const v = toLayer(layer, src, parseScript(src, ok.config, file), ok.config);
-    setView({ key: viewKey, v, text: v.text });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewKey, ok]);
-  const editLayer = (text: string) => {
-    if (!activeView || !ok) return;
-    setView({ ...activeView, text });
-    update(fromLayer(activeView.v, text, ok.config));
+  // Draft, Play and Code are separate texts. Play is the script file itself;
+  // a missing Draft or Code is made from Play for free the first time it's opened.
+  const isScript = file.endsWith(".intent");
+  const vFile = (v: Version) => versionFile(file, v);
+  const shown = isScript ? vFile(layer) : file;
+  const compiledCode = (src: string) => {
+    if (!ok) return "";
+    const one = compileProject(JSON.parse(project.files["intent.json"] || "{}"), { ...Object.fromEntries(Object.entries(project.files).filter(([n]) => n.endsWith(".sheet"))), [file]: src }, ["renpy"]);
+    return one.files[`renpy/${slug(file.replace(/\.[^.]+$/, ""))}.rpy`] ?? "";
   };
-  // Claude converts the file's draft passages when the writer presses ✦, and
-  // shows the result for review before anything changes. Tabs only switch views.
-  const convertDrafts = async () => {
-    const src = project.files[file] ?? "";
-    // Only passages with real, new prose count: empty ones and the starter hint stay put.
-    const all = ok && file.endsWith(".intent") ? draftBlocks(src) : [];
-    const real = all.map((b) => b.prose.trim() !== "" && b.prose.trim() !== DRAFT_HINT);
-    const reused = all.map((b, k) => (real[k] ? remembered(b.prose) ?? null : null));
-    const blocks = all.filter((b, k) => real[k] && reused[k] === null);
-    if (!ok || !real.some(Boolean)) return;
-    let scripts: Array<string | null> = reused;
-    if (blocks.length) {
-      const n = blocks.length;
-      const what = `${n} draft passage${n > 1 ? "s" : ""}`;
-      if (!apiKey) {
-        say(`${n === 1 ? "This draft passage stays" : `These ${n} draft passages stay`} as prose. Add your Claude key to convert.`, 8000, { label: "Settings", run: () => setSettingsOpen(true) });
-        return;
-      }
-      setBusy(`Claude is converting ${what}…`);
+  useEffect(() => {
+    if (!isScript || layer === "play" || !ok || project.files[vFile(layer)] !== undefined) return;
+    const play = project.files[file] ?? "";
+    const text = layer === "draft" ? toLayer("draft", play, parseScript(play, ok.config, file), ok.config).text : compiledCode(play);
+    const files = { ...project.files, [vFile(layer)]: text };
+    files[SYNC_FILE] = markSynced(files, file, pairOf("play", layer)!, { play, [layer]: text });
+    setProjects((list) => list.map((p) => (p.id === project.id ? { ...p, files } : p)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScript, layer, file, ok]);
+  const states = isScript ? neighbours(layer).map((n) => ({ n, s: pairState(project.files, file, layer, n) })) : [];
+  const behind = (v: Version) => isScript && neighbours(v).some((n) => { const st = pairState(project.files, file, v, n); return !st.missing && !inSync(st); });
+
+  // ✦ Update: bring version `to` in step with `from`, then review before it changes.
+  const syncVersions = async (from: Version, to: Version) => {
+    if (!ok || busy) return;
+    const pair = pairOf(from, to)!;
+    const base = readSync(project.files)[file]?.[pair] ?? {};
+    const after = project.files[vFile(from)] ?? "";
+    const target = project.files[vFile(to)] ?? "";
+    let proposed: string;
+    if (from === "play" && to === "renpy" && (base.renpy === undefined || base.renpy === target)) {
+      proposed = compiledCode(after); // Code nobody edited by hand: Intent writes it, no Claude needed.
+    } else {
+      if (!apiKey) return say("Updating needs your Claude key.", 8000, { label: "Settings", run: () => setSettingsOpen(true) });
+      setBusy(`Claude is updating ${VERSION_NAMES[to]} from ${VERSION_NAMES[from]}…`);
       try {
-        const before = src.split("\n").slice(0, blocks[0].open).join("\n");
-        const fresh = await claudeConvert(apiKey, model, blocks.map((b) => b.prose), ok.config, ok.sheets.map((x) => x.sheet), before);
-        let next = 0;
-        scripts = all.map((b, k) => (!real[k] ? null : reused[k] ?? fresh[next++]));
+        proposed = await claudeUpdate(apiKey, model, { from, to, before: base[from] ?? "", after, target }, ok.config, ok.sheets.map((x) => x.sheet));
       } catch (e) {
-        say(`Claude couldn't convert: ${explainFailure(e)}. Your prose is unchanged.`, 8000);
-        return;
+        return say(`Claude couldn't update: ${explainFailure(e)}. Nothing changed.`, 8000);
       } finally {
         setBusy(null);
       }
     }
-    setReviewing({ src, items: all.flatMap((b, k) => (scripts[k] === null ? [] : [{ k, prose: b.prose, script: scripts[k]! }])), scripts });
+    setReviewing({ from, to, before: target, after: proposed, fromText: after });
   };
-  const applyConversion = (src: string, scripts: Array<string | null>, note: string) => {
-    saveSnapshot(project.id, file, src, "Before Claude conversion");
+  const acceptUpdate = (r: NonNullable<typeof reviewing>) => {
+    const f = vFile(r.to);
+    saveSnapshot(project.id, f, r.before, `Before update from ${VERSION_NAMES[r.from]}`);
     setHistoryVersion((v) => v + 1);
-    update(replaceDrafts(src, scripts));
-    for (const g of scripts.flatMap((x) => (x ? detectMinigames(x) : []))) {
-      const f = sheetFileName("minigame", g);
-      if (project.files[f] === undefined) setFile(f, newSheet("minigame", g, `First written about in ${file}.`));
+    const files = { ...project.files, [f]: r.after };
+    files[SYNC_FILE] = markSynced(files, file, pairOf(r.from, r.to)!, { [r.from]: r.fromText, [r.to]: r.after });
+    for (const g of r.to === "play" ? detectMinigames(r.after) : []) {
+      const sf = sheetFileName("minigame", g);
+      if (files[sf] === undefined) files[sf] = newSheet("minigame", g, `First written about in ${file}.`);
     }
-    setView(null);
-    say(note, 8000, { label: "Undo", run: () => { update(src); setView(null); setLayer("draft"); } });
+    setProjects((list) => list.map((p) => (p.id === project.id ? { ...p, files } : p)));
+    setReviewing(null);
+    say(`${VERSION_NAMES[r.to]} updated.`, 8000, { label: "Undo", run: () => setFile(f, r.before) });
   };
-  const switchLayer = (l: Layer) => {
-    if (busy) return;
-    setView(null);
-    setLayer(l);
-  };
-  const pendingDrafts = file.endsWith(".intent") ? draftBlocks(project.files[file] ?? "").filter((b) => b.prose.trim() && b.prose.trim() !== DRAFT_HINT).length : 0;
+  const switchLayer = (l: Layer) => setLayer(l);
 
   const say = (msg: string, ms = 2500, action: ToastAction | null = null) => {
     setToast(msg);
@@ -310,7 +307,13 @@ export function App() {
 
   const doExport = async () => {
     if (!ok) return say("Fix intent.json first");
-    await deliverExport(project.name, ok.files);
+    // Code you edited and kept in sync with Play goes into the export as it is.
+    const files = { ...ok.files };
+    for (const f of Object.keys(project.files).filter((n) => n.endsWith(".intent"))) {
+      const code = project.files[versionFile(f, "renpy")];
+      if (code !== undefined && inSync(pairState(project.files, f, "play", "renpy"))) files[`renpy/${slug(f.replace(/\.[^.]+$/, ""))}.rpy`] = code;
+    }
+    await deliverExport(project.name, files);
     say(isTauri() ? "Exported" : "Export downloaded");
   };
 
@@ -346,7 +349,7 @@ export function App() {
           <button className="ghost" onClick={addFile} title="New script">+ script</button>
         </div>
         <ul className="files">
-          {Object.keys(project.files).filter((f) => !f.endsWith(".sheet")).sort((a, b) => (a === "intent.json" ? 1 : b === "intent.json" ? -1 : a.localeCompare(b))).map((f) => (
+          {Object.keys(project.files).filter((f) => !f.endsWith(".sheet") && !isVersionFile(f)).sort((a, b) => (a === "intent.json" ? 1 : b === "intent.json" ? -1 : a.localeCompare(b))).map((f) => (
             <li key={f}>
               <button className={f === file ? "active" : ""} onClick={() => { setFileName(f); setMobile("write"); }}>
                 {f === "intent.json" ? "⚙ Project settings" : f}
@@ -412,7 +415,7 @@ export function App() {
         )}
       </aside>
 
-      <main className={`main view-${activeView ? layer : "play"}`}>
+      <main className={`main view-${isScript ? layer : "play"}`}>
         {file.endsWith(".sheet") && (
           <div className="toolbar" role="toolbar" aria-label="Sheet">
             <span className="label">Edit as:</span>
@@ -422,23 +425,15 @@ export function App() {
         )}
         {file.endsWith(".intent") && (
           <div className="toolbar" role="toolbar" aria-label="Layers">
-            {pendingDrafts > 0 && (
-              <button className="claude-go" onClick={() => { if (!busy) void convertDrafts(); }} disabled={!!busy} title={apiKey ? "Turn new prose into script with Claude" : "Add your Claude key in Settings first"} data-testid="convert-claude">
-                <span aria-hidden="true">✦</span> Convert with Claude <span className="count">{pendingDrafts}</span>
-              </button>
-            )}
             <div className="layer-tabs" role="tablist" aria-label="Layer">
               {(["draft", "play", "renpy"] as Layer[]).map((l) => (
                 <button key={l} role="tab" aria-selected={layer === l} className={layer === l ? "on" : ""} onClick={() => switchLayer(l)} data-testid={`layer-${l}`}>
-                  {{ draft: "Draft", play: "Play", renpy: "Ren'Py" }[l]}
+                  {{ draft: "Draft", play: "Play", renpy: "Code" }[l]}
+                  {behind(l) && <i className="sync-dot" title="Out of sync" />}
                 </button>
               ))}
             </div>
-            {layer !== "play" ? (
-              <span className="label">{layer === "draft" ? "Write as prose. Press ✦ to turn it into script." : "Edit the code. Lines Intent can't read stay as Ren'Py blocks."}</span>
-            ) : (
-              <span className="label">Add a layer:</span>
-            )}
+            {layer === "play" && <span className="label">Add a layer:</span>}
             {layer === "play" && <>
             <button onClick={() => insertBlock("draft")}><span className="layer-dot" style={{ background: "var(--speaker)" }} />Draft</button>
             <button onClick={() => insertBlock("renpy")}><span className="layer-dot" style={{ background: "var(--block)" }} />Ren'Py code</button>
@@ -446,6 +441,21 @@ export function App() {
             </>}
           </div>
         )}
+        {isScript && states.filter(({ s }) => !s.missing && !inSync(s)).map(({ n, s }) => (
+          <div key={n} className="sync-bar" role="status" data-testid={`sync-${n}`}>
+            <i className="sync-dot" />
+            <span>
+              {s.there && s.here ? `This ${VERSION_NAMES[layer]} and ${VERSION_NAMES[n]} were both edited since they were last in sync.`
+                : s.there ? `${VERSION_NAMES[n]} has changes that aren't in this ${VERSION_NAMES[layer]}.`
+                : `Your changes here aren't in ${VERSION_NAMES[n]} yet.`}
+            </span>
+            {s.there ? (
+              <button className="claude-go" disabled={!!busy} onClick={() => void syncVersions(n, layer)}>✦ Update {VERSION_NAMES[layer]} from {VERSION_NAMES[n]}</button>
+            ) : (
+              <button className="claude-go" disabled={!!busy} onClick={() => void syncVersions(layer, n)}>✦ Update {VERSION_NAMES[n]}</button>
+            )}
+          </div>
+        ))}
         {file.endsWith(".sheet") && !rawSheet ? (
           <div className="sheet-scroll">
             <SheetForm
@@ -458,12 +468,12 @@ export function App() {
           </div>
         ) : (
         <Editor
-          docKey={activeView ? activeView.key : `${project.id}/${file}`}
-          value={activeView ? activeView.text : (project.files[file] ?? "")}
+          docKey={`${project.id}/${shown}`}
+          value={project.files[shown] ?? ""}
           isJson={file.endsWith(".json")}
           wrap={prefs.wrap}
-          diagnostics={activeView ? [] : diagnostics}
-          onChange={activeView ? editLayer : update}
+          diagnostics={shown === file ? diagnostics : []}
+          onChange={(t) => setFile(shown, t)}
           onCursorLine={setCursorLine}
           jumpTo={jump}
           links={links}
@@ -524,8 +534,8 @@ export function App() {
             ) : tab === "mv" ? (
               <MvView json={result.files["mv/CommonEvents.intent.json"]} />
             ) : tab === "history" ? (
-              <HistoryPanel project={project.id} file={file} text={project.files[file] ?? ""} version={historyVersion}
-                onRestore={(t) => { update(t); setView(null); say("Version restored. The text before it is saved in History."); }} />
+              <HistoryPanel project={project.id} file={shown} text={project.files[shown] ?? ""} version={historyVersion}
+                onRestore={(t) => { setFile(shown, t); say("Version restored. The text before it is saved in History."); }} />
             ) : tab === "report" ? (
               <pre className="code wrap">{result.files["renpy/REPORT.md"]}{"\n\n"}{result.files["mv/REPORT.md"]}</pre>
             ) : (
@@ -589,30 +599,21 @@ export function App() {
       )}
       {reviewing && (
         <div className="modal-back" onClick={() => setReviewing(null)}>
-          <div className="modal wide" role="dialog" aria-label="Review Claude's conversion" onClick={(e) => e.stopPropagation()}>
+          <div className="modal wide" role="dialog" aria-label="Review the update" onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
-              <h2>✦ Review the conversion</h2>
+              <h2>✦ Update {VERSION_NAMES[reviewing.to]} from {VERSION_NAMES[reviewing.from]}</h2>
               <button className="icon" onClick={() => setReviewing(null)} aria-label="Close">✕</button>
             </div>
-            <p className="muted">Your prose on the left, Claude's script on the right. Edit the script if you like; nothing changes until you accept.</p>
-            {reviewing.items.map((it, i) => (
-              <div key={it.k} className="convert-grid">
-                <div className="prose">{it.prose}</div>
-                <div>
-                  <textarea value={it.script} spellCheck={false} rows={Math.min(14, it.script.split("\n").length + 1)} data-testid="review-script"
-                    onChange={(e) => { const items = [...reviewing.items]; items[i] = { ...it, script: e.target.value }; setReviewing({ ...reviewing, items }); }} />
-                  {it.script.split("\n").filter((l) => l.trim().startsWith("// check:")).map((l, j) => <div key={j} className="check-note">{l.trim().slice(9).trim()}</div>)}
-                </div>
-              </div>
-            ))}
+            <p className="muted">Green lines are added to {VERSION_NAMES[reviewing.to]}, red lines are removed. Nothing changes until you accept; the old text goes to History.</p>
+            <div className="diff review-diff">
+              {lineDiff(reviewing.before, reviewing.after).map((l, k) => (
+                <div key={k} className={`diff-${l.op}`}>{l.op === "add" ? "+ " : l.op === "del" ? "− " : "  "}{l.text || " "}</div>
+              ))}
+            </div>
+            {reviewing.before === reviewing.after && <p className="muted">No changes needed: the two are already in step.</p>}
             <div className="modal-actions">
-              <button onClick={() => setReviewing(null)}>Keep as prose</button>
-              <button className="primary" data-testid="review-accept" onClick={() => {
-                const scripts = [...reviewing.scripts];
-                for (const it of reviewing.items) scripts[it.k] = it.script;
-                applyConversion(reviewing.src, scripts, "Conversion applied.");
-                setReviewing(null);
-              }}>Accept</button>
+              <button onClick={() => setReviewing(null)}>Not now</button>
+              <button className="primary" data-testid="review-accept" onClick={() => acceptUpdate(reviewing)}>Accept</button>
             </div>
           </div>
         </div>

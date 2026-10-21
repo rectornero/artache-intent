@@ -1,6 +1,6 @@
-// Draft -> Script with Claude, on the writer's own API key. The key lives in
-// this device's app storage only: never in project files, never in exports.
-// Any failure falls back to the plain rules, so the tabs always convert.
+// Claude keeps Draft, Play and Code in step, on the writer's own API key, only
+// when the writer asks. The key lives in this device's app storage only:
+// never in project files, never in exports.
 
 import spec from "../docs/SPEC.md?raw";
 import type { ProjectConfig } from "../src/core/config.ts";
@@ -51,17 +51,20 @@ export function saveApiKey(key: string) {
   }
 }
 
-const SYSTEM = `You convert a writer's prose drafts into Intent Script, the plain-text format below.
+const SYSTEM = `You keep three versions of a game script in step for a writer:
+- Draft: the story as prose, in the writer's own words.
+- Play: the same story in Intent Script, the plain-text format described below.
+- Code: the Ren'Py code for it, as Intent generates it, possibly with the writer's own tweaks.
+
+You get the version the writer changed, before and after, and the current text of the version to update. Apply to that version exactly the changes the edit calls for, written the way that version is written, and keep everything else in it unchanged, character for character, including anything the writer edited there by hand.
 
 Rules:
-- Never change, add or drop the writer's words. Spoken words go into dialogue lines exactly as written; narration stays narration.
-- Each passage is converted on its own and returned in the same order.
-- Speech tags ("she says", "Edward agrees", "Tony mutters, pocketing the keys") name the speaker; drop pure tags, keep any action in them as narration.
-- Use the cast keys given (ALL CAPS) for speakers. Work out who "he", "she" or "they" is from each character's gender, their nicknames and the story so far. A speaker you cannot identify for sure: pick the likeliest and add a line "// check: <why>" just above.
-- When the scene moves to a place that has a background, add [BG Name] (plus a tint if the prose gives a time of day) and its [MUSIC ...] if the place sheet has one.
-- When the prose triggers a minigame ("an Investigation minigame starts"), keep the sentence as narration if it reads as story, and add ">> MINIGAME: Name" after it.
-- Plain lines are spoken by the current narrator; don't prefix them.
-- Use "// check:" notes only for real doubts. No other commentary.
+- Never reword the writer's text. Dialogue and narration carry over word for word between Draft and Play.
+- Draft to Play: speech tags ("she says", "Edward agrees") name the speaker and are dropped; actions in tags stay as narration. Use the cast keys (ALL CAPS). Work out who "he", "she" or "they" is from each character's gender, nicknames and the story. Place changes add [BG Name] and the place's [MUSIC ...]; minigames add ">> MINIGAME: Name".
+- Play to Draft: write new script lines as prose in the style of the surrounding draft ("“Line,” Tony says."). Stage directions become short prose only when the draft already describes such things; otherwise leave them out.
+- Play to Code and back: follow how the existing code renders each kind of line.
+- If the version to update is empty, write it in full from the changed version.
+- Where you can't be sure, add a note line just above: "// check: why" in Play, "# check: why" in Code, "[check: why]" in Draft.
 
 Intent Script reference:
 
@@ -71,18 +74,16 @@ const FORMAT = {
   type: "json_schema" as const,
   schema: {
     type: "object",
-    properties: {
-      passages: {
-        type: "array",
-        items: { type: "object", properties: { script: { type: "string" } }, required: ["script"], additionalProperties: false },
-      },
-    },
-    required: ["passages"],
+    properties: { text: { type: "string" } },
+    required: ["text"],
     additionalProperties: false,
   },
 };
 
-function context(cfg: ProjectConfig, sheets: Sheet[], before: string): string {
+const NAMES = { draft: "Draft (prose)", play: "Play (Intent Script)", renpy: "Code (Ren'Py)" } as const;
+type Version = keyof typeof NAMES;
+
+function context(cfg: ProjectConfig, sheets: Sheet[]): string {
   const cast = Object.entries(cfg.cast)
     .map(([k, m]) => `${k}${m.display && m.display !== k ? ` (${m.display})` : ""}${m.aliases?.length ? `, also ${m.aliases.join(", ")}` : ""}`)
     .join("\n");
@@ -95,38 +96,47 @@ function context(cfg: ProjectConfig, sheets: Sheet[], before: string): string {
     `Backgrounds: ${Object.keys(cfg.assets.bg).join(", ") || "(none)"}`,
     `Music: ${Object.keys(cfg.assets.music).join(", ") || "(none)"}`,
     `Sheets:\n${sheetText || "(none)"}`,
-    `The script so far (for context only):\n${before.split("\n").slice(-40).join("\n")}`,
   ].join("\n\n");
 }
 
-// Passages Claude already converted this session: the same prose never costs a second call.
-const done = new Map<string, string>();
-export const remembered = (prose: string) => done.get(prose.trim());
+export interface UpdateRequest {
+  from: Version;
+  to: Version;
+  /** The changed version as it was at the last sync ("" if never synced), and now. */
+  before: string;
+  after: string;
+  /** The version to update, as it is now. */
+  target: string;
+}
 
-/** One script per passage, in order. Throws on any failure; the caller falls back to rules. */
-export async function claudeConvert(apiKey: string, model: ClaudeModel, passages: string[], cfg: ProjectConfig, sheets: Sheet[], before: string): Promise<string[]> {
+/** The updated text of `to`. Throws on any failure; nothing is changed then. */
+export async function claudeUpdate(apiKey: string, model: ClaudeModel, req: UpdateRequest, cfg: ProjectConfig, sheets: Sheet[]): Promise<string> {
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-  const body = passages.map((p, i) => `<passage n="${i + 1}">\n${p}\n</passage>`).join("\n\n");
+  const content = [
+    context(cfg, sheets),
+    `Changed version: ${NAMES[req.from]}. Version to update: ${NAMES[req.to]}.`,
+    `<changed_before>\n${req.before}\n</changed_before>`,
+    `<changed_after>\n${req.after}\n</changed_after>`,
+    `<to_update>\n${req.target}\n</to_update>`,
+    `Return the full updated ${NAMES[req.to]}.`,
+  ].join("\n\n");
   const message = await client.beta.messages
     .stream({
       model,
-      max_tokens: 16000,
+      max_tokens: 64000,
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       thinking: { type: "adaptive" },
       output_config: { effort: "medium", format: FORMAT },
       system: SYSTEM,
-      messages: [{ role: "user", content: `${context(cfg, sheets, before)}\n\nConvert these ${passages.length} passage(s):\n\n${body}` }],
+      messages: [{ role: "user", content }],
     })
     .finalMessage();
-  if (message.stop_reason === "refusal") throw new Error("Claude declined this passage");
-  if (message.stop_reason === "max_tokens") throw new Error("the passages were too long for one go");
+  if (message.stop_reason === "refusal") throw new Error("Claude declined this text");
+  if (message.stop_reason === "max_tokens") throw new Error("the text is too long for one go");
   const text = message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-  const out = (JSON.parse(text) as { passages: Array<{ script: string }> }).passages.map((p) => p.script.trim());
-  if (out.length !== passages.length) throw new Error(`got ${out.length} passages back, expected ${passages.length}`);
-  passages.forEach((p, i) => done.set(p.trim(), out[i]));
-  return out;
+  return (JSON.parse(text) as { text: string }).text.replace(/\s+$/, "") + "\n";
 }
 
 /** A failure in words a writer can act on. */
