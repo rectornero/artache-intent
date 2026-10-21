@@ -460,3 +460,14 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .handoff-error { color: var(--warning); margin: 8px 0 0; }
 .handoff .modal-actions { align-items: center; }
 .modal-actions .spacer { flex: 1; }
+
+/* Connect Claude */
+.connect-way { border-top: 1px solid var(--border); padding-top: 4px; margin-top: 14px; }
+.connect-way h3 { margin-top: 10px; }
+.connect-way p { margin: 0 0 10px; line-height: 1.5; font-size: 14px; }
+.connect-way > button { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); }
+.connect-way code { font-size: 12px; background: var(--panel2); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.connect-snippet { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+.snippet-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel2); font-size: 13px; }
+.snippet-head .ghost { margin-left: auto; }
+.connect-snippet pre { margin: 0; padding: 10px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }

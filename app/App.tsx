@@ -31,6 +31,7 @@ import { type Sheet, detectMinigames, newSheet, sheetFileName, sheetNames, sheet
 import { SAMPLES, newProject } from "./samples.ts";
 import { deliverExport, whenSaveFails, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, pickFolder, readFolder, savePrefs, saveFileAs, saveProjects, writeFolder, type Project } from "./storage.ts";
 import { CLAUDE_FILES } from "./claudeCode.ts";
+import { ConnectClaude } from "./ConnectClaude.tsx";
 import { diskChanges, mergeDisk } from "../src/core/folder.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPrefs } from "./themes.ts";
 
@@ -87,6 +88,7 @@ export function App() {
   const [handoff, setHandoff] = useState<{ job: Job<unknown>; resolve: (v: unknown) => void; reject: (e: Error) => void } | null>(null);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number; file: string } | null>(null);
   const [reviewing, setReviewing] = useState<{ projectId: string; play: string; from: Version; to: Version; before: string; after: string; fromText: string } | null>(null);
 
@@ -634,6 +636,7 @@ export function App() {
         </div>
         <div className="side-actions">
           <button className="side-btn" onClick={addProject}>New project</button>
+          <button className="side-btn" onClick={() => setConnectOpen(true)} data-testid="connect-claude">✦ Connect Claude</button>
           <button className="side-btn" onClick={importFiles}>Open file</button>
           {!file.endsWith(".json") && <button className="side-btn" onClick={async () => { if (await saveFileAs(file, project.files[file] ?? "")) say(`Saved ${file.split("/").pop()}`); }}>Save as file</button>}
           {isTauri() && (
@@ -642,7 +645,6 @@ export function App() {
               {project.folder ? (
                 <>
                   <button className="side-btn" onClick={() => void reloadFolder(project, false)} title="Take changes made outside Intent">Reload</button>
-                  <button className="side-btn" onClick={() => void setUpClaudeCode()} title="Write a CLAUDE.md so Claude Code can edit this project">Set up Claude Code</button>
                 </>
               ) : (
                 <button className="side-btn" onClick={() => void keepInFolder()} title="Save this project in a folder on disk, kept up to date as you type">Keep in a folder</button>
@@ -907,6 +909,13 @@ export function App() {
             </div>
           </div>
         </div>
+      )}
+      {connectOpen && (
+        <ConnectClaude folder={project.folder} hasKey={!!apiKey}
+          onSettings={() => { setConnectOpen(false); setSettingsOpen(true); }}
+          onKeepInFolder={() => { setConnectOpen(false); void keepInFolder(); }}
+          onSetUpClaudeCode={() => void setUpClaudeCode()}
+          onClose={() => setConnectOpen(false)} />
       )}
       {handoff && (
         <HandoffModal

@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "../dist-mcp/intent-mcp.mjs": "intent-mcp.mjs"
+    }
+  }
+}

@@ -190,3 +190,7 @@ Settings → Claude → **Copy and paste**, or simply no key. Every ✦ action (
 - **Set up Claude Code** writes `CLAUDE.md` and `INTENT_SPEC.md` into the folder, so Claude Code knows the format, the three versions, the house rules, and how to write story checks.
 - When Intent's window comes back into focus (or on **Reload**), it takes the files changed on disk. A file changed both in Intent and on disk keeps Intent's text; the disk copy goes to History.
 - **Mark as in step** in the sync bar tells Intent that two versions already match, for when they were brought in step by hand or by Claude Code.
+
+## Connector (MCP, 0.3)
+
+`intent-mcp` is an MCP server for a folder project, so Claude Code or the Claude desktop app can use Intent's own tools: `intent_overview`, `intent_format`, `intent_read`, `intent_write` (returns Intent's problems after every write), `intent_find`, `intent_replace`, `intent_rename_sheet`, `intent_mark_in_step`, `intent_save_story_check`, and `intent_export`. It only touches Intent's files inside the project folder. Build it with `npm run mcp:build` (→ `dist-mcp/intent-mcp.mjs`, needs Node.js 20+). The Windows app ships it, and **✦ Connect Claude** shows the exact commands.
