@@ -115,6 +115,8 @@ server.registerTool("intent_overview", { title: "Project overview", description:
 
 server.registerTool("intent_format", { title: "Intent Script reference", description: "The full Intent Script and sheet format. Read once before writing scripts or sheets." }, async () => {
   if (typeof __INTENT_SPEC__ === "string") return text(__INTENT_SPEC__);
+  const embedded = (globalThis as { __INTENT_SPEC_TEXT__?: string }).__INTENT_SPEC_TEXT__;
+  if (embedded) return text(embedded);
   return text(readFileSync(new URL("../docs/SPEC.md", import.meta.url), "utf8"));
 });
 

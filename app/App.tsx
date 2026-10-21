@@ -29,12 +29,12 @@ import { saveSnapshot } from "./history.ts";
 import type { LinkTarget } from "./intentMode.ts";
 import { type Sheet, detectMinigames, newSheet, sheetFileName, sheetNames, sheetUsage, SHEET_KINDS, type SheetKind } from "../src/core/sheets.ts";
 import { SAMPLES, newProject } from "./samples.ts";
-import { deliverExport, whenSaveFails, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, openProjectFile, pickFolder, readFolder, saveProjectFile, savePrefs, saveFileAs, saveProjects, writeFolder, type Project } from "./storage.ts";
+import { deliverExport, whenSaveFails, isTauri, launchFile, launchProject, loadPrefs, loadProjects, openFiles, openFolder, openProjectFile, pickFolder, readFolder, saveProjectFile, savePrefs, saveFileAs, saveProjects, writeFolder, type Project } from "./storage.ts";
 import { CLAUDE_FILES } from "./claudeCode.ts";
 import { ConnectClaude } from "./ConnectClaude.tsx";
 import { BackupsPanel } from "./BackupsPanel.tsx";
 import { AssetsPanel } from "./AssetsPanel.tsx";
-import { assetsFromRenpy } from "../src/core/assets.ts";
+import { assetsFromMv, assetsFromRenpy } from "../src/core/assets.ts";
 import { EVERY_MS, saveBackup, sameFiles, type Backup } from "./backups.ts";
 import { pack, unpack } from "../src/core/pack.ts";
 import { diskChanges, mergeDisk } from "../src/core/folder.ts";
@@ -203,10 +203,10 @@ export function App() {
     const data = await pack({ id: project.id.startsWith("folder:") ? `p${Date.now()}` : project.id, name, savedAt: Date.now(), app: __APP_VERSION__ }, files);
     if (await saveProjectFile(name, data)) say(isTauri() ? "Project file saved." : "Project file downloaded.");
   };
-  const openProject = async () => {
+  const openProject = async (given?: Uint8Array) => {
     let got: Awaited<ReturnType<typeof unpack>>;
     try {
-      const data = await openProjectFile();
+      const data = given ?? (await openProjectFile());
       if (!data) return;
       got = await unpack(data);
     } catch (e) {
@@ -597,9 +597,10 @@ export function App() {
   };
   const importFiles = async () => addFiles(await openFiles());
 
-  // Double-clicking a .intent file on Windows opens the app with it.
+  // Double-clicking a .intent file (or a .intentproj project) on Windows opens the app with it.
   useEffect(() => {
     launchFile().then((f) => f && addFiles({ [f.name]: f.text }));
+    launchProject().then((data) => data && void openProject(data), () => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -623,9 +624,12 @@ export function App() {
     return files;
   }, [ok, project.files]);
   const assets = useMemo(() => {
-    if (!exportFiles) return [];
+    if (!exportFiles) return { renpy: [], mv: [] };
     const scriptOf = new Map(Object.keys(project.files).filter((n) => n.endsWith(".intent")).map((f) => [`renpy/${slug(f.replace(/\.[^.]+$/, ""))}.rpy`, f]));
-    return assetsFromRenpy(Object.fromEntries(Object.entries(exportFiles).filter(([n]) => scriptOf.has(n))), (n) => scriptOf.get(n) ?? n);
+    return {
+      renpy: assetsFromRenpy(Object.fromEntries(Object.entries(exportFiles).filter(([n]) => scriptOf.has(n))), (n) => scriptOf.get(n) ?? n),
+      mv: assetsFromMv(Object.fromEntries(Object.entries(exportFiles).filter(([n]) => n.startsWith("mv/")))),
+    };
   }, [exportFiles, project.files]);
 
   const doExport = async () => {
@@ -875,7 +879,7 @@ export function App() {
                 onRename={(n) => renameSheetTo(sheetFile, n)}
               />
             ) : tab === "assets" ? (
-              <AssetsPanel project={project.id} assets={assets} onOpen={(f) => { setFileName(f); setMobile("write"); }} />
+              <AssetsPanel project={project.id} byEngine={assets} onOpen={(f) => { setFileName(f); setMobile("write"); }} />
             ) : tab === "backups" ? (
               <BackupsPanel project={project.id} version={backupVersion} onBackUpNow={() => void backUp(project, true)} onRestore={restoreBackup}
                 onSaveFile={(b) => void saveAsProjectFile(b.files, `${b.name} ${new Date(b.at).toISOString().slice(0, 16).replace("T", " ").replace(":", "")}`)}

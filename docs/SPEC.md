@@ -203,3 +203,7 @@ Settings → Claude → **Copy and paste**, or simply no key. Every ✦ action (
 ## Assets (0.3)
 
 Export → Assets lists every background, CG, sprite, song and sound the Ren'Py export uses, with the scripts that use it. **Link game folder** (Windows and Android apps; remembered per project on that device) or **Check a folder** (browser; nothing is uploaded) matches them against the game's files the way Ren'Py does: `game/images/**/bg hall.png` is the image `bg hall`, a sprite shown by its tag alone matches any image of that tag, and `game/audio/**/guest.ogg` is the sound `guest`. Missing assets show the file name to add; images no script uses are listed too. Assets are never copied into the project.
+
+A switch at the top picks the engine. For **RPG Maker MV**, Intent reads the MV export's Show Picture, face, BGM and SE commands and looks in `img/pictures`, `img/parallaxes`, `img/faces`, `audio/bgm`, `audio/bgs`, `audio/se` and `audio/me` (encrypted `.rpgmvp`/`.rpgmvo` files count), in the project folder or its `www/`. Each engine remembers its own folder.
+
+The Windows app ships the connector as `intent-mcp.exe` (no Node needed); ✦ Connect Claude fills in its path. The app opens `.intentproj` files on double-click, and opens links such as claude.ai in the system browser.

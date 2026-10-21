@@ -20,13 +20,15 @@ export function ConnectClaude({ folder, hasKey, onSettings, onKeepInFolder, onSe
   const [copied, setCopied] = useState("");
   useEffect(() => {
     if (!isTauri() || !isWindows()) return;
-    import("@tauri-apps/api/path").then(({ resolveResource }) => resolveResource("intent-mcp.mjs")).then(setServer, () => setServer(null));
+    import("@tauri-apps/api/path").then(({ resolveResource }) => resolveResource("intent-mcp.exe")).then(setServer, () => setServer(null));
   }, []);
+  // The Windows app carries intent-mcp.exe, which needs nothing else; elsewhere it's the .mjs on Node.
   const mcp = server ?? "C:\\path\\to\\intent-mcp.mjs";
+  const cmd = server ? [server] : ["node", mcp];
   const dir = folder ?? "C:\\path\\to\\your\\project";
   const q = (s: string) => `"${s}"`;
-  const claudeCode = `claude mcp add intent -- node ${q(mcp)} ${q(dir)}`;
-  const desktop = JSON.stringify({ mcpServers: { intent: { command: "node", args: [mcp, dir] } } }, null, 2);
+  const claudeCode = `claude mcp add intent -- ${server ? q(server) : `node ${q(mcp)}`} ${q(dir)}`;
+  const desktop = JSON.stringify({ mcpServers: { intent: { command: cmd[0], args: [...cmd.slice(1), dir] } } }, null, 2);
   const copy = async (what: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -71,9 +73,9 @@ export function ConnectClaude({ folder, hasKey, onSettings, onKeepInFolder, onSe
 
         <section className="connect-way">
           <h3>Connector (MCP)</h3>
-          <p>Gives Claude Code or the Claude desktop app Intent's own tools: read and write scripts with Intent's checks after every write, search, rename, see which versions are in step, and save story checks. Needs a folder project and Node.js 20 or newer.</p>
+          <p>Gives Claude Code or the Claude desktop app Intent's own tools: read and write scripts with Intent's checks after every write, search, rename, see which versions are in step, and save story checks. Needs a folder project{server ? "; nothing else to install" : " and Node.js 20 or newer"}.</p>
           {!folder && <p className="muted">Paths below are placeholders until this project lives in a folder.</p>}
-          {!server && <p className="muted">The Windows app includes the connector file. Elsewhere, download intent-mcp from the release page and put its path below.</p>}
+          {!server && <p className="muted">The Windows app includes the connector, ready to run. Elsewhere, download intent-mcp.mjs from the release page and put its path below.</p>}
           <div className="connect-snippet">
             <div className="snippet-head"><b>Claude Code</b><span className="muted">run in a terminal</span><button className="ghost" onClick={() => void copy("cc", claudeCode)}>{copied === "cc" ? "Copied ✓" : "Copy"}</button></div>
             <pre>{claudeCode}</pre>

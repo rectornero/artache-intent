@@ -511,3 +511,4 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .asset-state.warn { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); }
 .asset-unused summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .asset-unused ul { margin: 6px 0 0; padding-left: 18px; font-size: 12px; }
+.assets > .seg { align-self: flex-start; }

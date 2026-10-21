@@ -25,5 +25,6 @@
     "app",
     "vite.config.ts",
     "vitest.config.ts"
-  ]
+  ],
+  "exclude": ["src/mcp-exe.ts"]
 }

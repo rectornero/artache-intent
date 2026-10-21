@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { handoffText, type Job } from "./claude.ts";
+import { openExternal } from "./storage.ts";
 
 interface Props {
   job: Job<unknown>;
@@ -61,7 +62,7 @@ export function HandoffModal({ job, onAnswer, onCancel, onUseKey }: Props) {
           <li>
             <b>Paste it into Claude</b>
             <span className="muted">The Claude app, claude.ai, or Claude Code all work. Send it and wait for the answer.</span>
-            <div className="row"><a className="btn" href="https://claude.ai/new" target="_blank" rel="noreferrer">Open claude.ai</a></div>
+            <div className="row"><button onClick={() => void openExternal("https://claude.ai/new")}>Open claude.ai</button></div>
           </li>
           <li>
             <b>Paste Claude's answer here</b>

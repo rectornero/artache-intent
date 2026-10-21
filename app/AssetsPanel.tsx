@@ -1,31 +1,37 @@
-// Every background, CG, sprite, song and sound the scripts use, checked
-// against the game folder. The app reads the folder itself (and remembers it
+// Every background, CG, sprite, face, song and sound the scripts use, for
+// Ren'Py or RPG Maker MV, checked against the game folder. The app reads the folder itself (and remembers it
 // on this device); the browser checks a folder you pick, each time.
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "./Icon.tsx";
 import { fileUrl, gameFolderOf, isTauri, listFolderFiles, pickFolder, pickFolderFiles, setGameFolder } from "./storage.ts";
-import { ASSET_KINDS, gameRelative, matchAsset, unusedImages, type Asset, type AssetKind } from "../src/core/assets.ts";
+import { ASSET_KINDS, engineRoot, matchAsset, unusedImages, type Asset, type AssetKind, type Engine } from "../src/core/assets.ts";
 
-const KIND_NAMES: Record<AssetKind, string> = { background: "Backgrounds", cg: "CGs", sprite: "Sprites", music: "Music", sound: "Sounds" };
-const KIND_ICONS: Record<AssetKind, string> = { background: "place", cg: "images", sprite: "character", music: "songs", sound: "sound" };
-const isImage = (k: AssetKind) => k === "background" || k === "cg" || k === "sprite";
-const expected = (a: Asset) => (isImage(a.kind) ? `images/${a.name}.png` : /[./]/.test(a.name) ? a.name : `audio/${a.name}.ogg`);
+const KIND_NAMES: Record<AssetKind, string> = { background: "Backgrounds", cg: "CGs", sprite: "Sprites", face: "Faces", music: "Music", sound: "Sounds" };
+const KIND_ICONS: Record<AssetKind, string> = { background: "place", cg: "images", sprite: "character", face: "identity", music: "songs", sound: "sound" };
+const ENGINE_NAMES: Record<Engine, string> = { renpy: "Ren'Py", mv: "RPG Maker MV" };
+const isImage = (k: AssetKind) => k !== "music" && k !== "sound";
+const expected = (a: Asset, engine: Engine) => {
+  if (engine === "mv") return `${{ background: "img/pictures", cg: "img/pictures", sprite: "img/pictures", face: "img/faces", music: "audio/bgm", sound: "audio/se" }[a.kind]}/${a.name}.${isImage(a.kind) ? "png" : "ogg"}`;
+  return isImage(a.kind) ? `images/${a.name}.png` : /[./]/.test(a.name) ? a.name : `audio/${a.name}.ogg`;
+};
+const folderKey = (project: string, engine: Engine) => (engine === "renpy" ? project : `${project}|mv`);
 
 /** Where the files come from: a folder on disk (app), or files picked in the browser. */
 type Source = { kind: "disk"; dir: string; game: string; files: string[] } | { kind: "picked"; label: string; files: string[]; byPath: Map<string, File> };
 
-export function AssetsPanel({ project, assets, onOpen }: { project: string; assets: Asset[]; onOpen: (script: string) => void }) {
+export function AssetsPanel({ project, byEngine, onOpen }: { project: string; byEngine: Record<Engine, Asset[]>; onOpen: (script: string) => void }) {
+  const [engine, setEngine] = useState<Engine>(() => (byEngine.renpy.length || !byEngine.mv.length ? "renpy" : "mv"));
+  const assets = byEngine[engine];
   const [source, setSource] = useState<Source | null>(null);
   const [error, setError] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
 
   const loadDisk = async (dir: string) => {
     try {
-      const all = (await listFolderFiles(dir)).map((p) => p.replace(/\\/g, "/"));
-      // The Ren'Py project folder (with game/ inside), or game/ itself.
-      const inGame = all.some((p) => p.startsWith("game/"));
-      setSource({ kind: "disk", dir, game: inGame ? `${dir}/game` : dir, files: inGame ? all.filter((p) => p.startsWith("game/")).map((p) => p.slice(5)) : all });
+      // Ren'Py: the project folder (with game/ inside) or game/ itself. MV: the project, or its www/.
+      const { prefix, files } = engineRoot(await listFolderFiles(dir), engine);
+      setSource({ kind: "disk", dir, game: prefix ? `${dir}/${prefix.replace(/\/$/, "")}` : dir, files });
       setError("");
     } catch {
       setError(`Couldn't read ${dir}. Is it still there?`);
@@ -33,32 +39,37 @@ export function AssetsPanel({ project, assets, onOpen }: { project: string; asse
   };
   useEffect(() => {
     setSource(null);
-    const dir = isTauri() ? gameFolderOf(project) : null;
+    const dir = isTauri() ? gameFolderOf(folderKey(project, engine)) : null;
     if (dir) void loadDisk(dir);
-  }, [project]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, engine]);
 
   const link = async () => {
     if (isTauri()) {
-      const dir = await pickFolder("Your game's folder (the one with game/ inside)");
+      const dir = await pickFolder(engine === "renpy" ? "Your Ren'Py game's folder (the one with game/ inside)" : "Your RPG Maker MV project folder");
       if (!dir) return;
-      setGameFolder(project, dir);
+      setGameFolder(folderKey(project, engine), dir);
       return loadDisk(dir);
     }
     const picked = await pickFolderFiles();
     if (!picked) return;
     const paths = [...picked.keys()];
-    const rel = gameRelative(paths);
-    const prefix = paths.find((p) => /(^|\/)game\//.test(p))?.replace(/game\/.*$/, "game/") ?? "";
-    const byPath = new Map(rel.map((r) => [r, picked.get(prefix + r) ?? picked.get(r)!]));
-    setSource({ kind: "picked", label: paths[0]?.split("/")[0] ?? "folder", files: rel, byPath });
+    const { prefix, files } = engineRoot(paths, engine);
+    const byPath = new Map(files.map((r) => [r, picked.get(prefix + r)!]));
+    setSource({ kind: "picked", label: paths[0]?.split("/")[0] ?? "folder", files, byPath });
   };
 
-  const rows = useMemo(() => assets.map((a) => ({ a, found: source ? matchAsset(a, source.files) : null })), [assets, source]);
+  const rows = useMemo(() => assets.map((a) => ({ a, found: source ? matchAsset(a, source.files, engine) : null })), [assets, source, engine]);
   const missing = rows.filter((r) => r.found && !r.found.length).length;
-  const unused = source ? unusedImages(assets, source.files) : [];
+  const unused = source ? unusedImages(assets, source.files, engine) : [];
 
   return (
     <div className="assets" data-testid="assets">
+      <div className="seg" role="radiogroup" aria-label="Engine">
+        {(["renpy", "mv"] as Engine[]).map((e) => (
+          <button key={e} role="radio" aria-checked={engine === e} className={engine === e ? "on" : ""} onClick={() => setEngine(e)}>{ENGINE_NAMES[e]}</button>
+        ))}
+      </div>
       <div className="assets-head">
         <div>
           <b>{assets.length} asset{assets.length === 1 ? "" : "s"} used</b>
@@ -85,10 +96,10 @@ export function AssetsPanel({ project, assets, onOpen }: { project: string; asse
                 <div className="asset-info">
                   <code>{a.name}</code>
                   <span className="muted">
-                    {found === null ? "Not checked" : found.length ? found.join(", ") : <>Missing: add <code>{expected(a)}</code></>}
+                    {found === null ? "Not checked" : found.length ? found.join(", ") : <>Missing: add <code>{expected(a, engine)}</code></>}
                   </span>
                   <span className="asset-uses">
-                    {a.scripts.map((s) => <button key={s} className="link" onClick={() => onOpen(s)}>{s}</button>)}
+                    {a.scripts.map((s) => (s.endsWith(".intent") ? <button key={s} className="link" onClick={() => onOpen(s)}>{s}</button> : <span key={s} className="muted">{s}</span>))}
                   </span>
                 </div>
                 {found && <span className={`asset-state ${found.length ? "good" : "warn"}`}>{found.length ? "✓" : "!"}</span>}
@@ -100,7 +111,7 @@ export function AssetsPanel({ project, assets, onOpen }: { project: string; asse
       {unused.length > 0 && !onlyMissing && (
         <details className="asset-unused">
           <summary>{unused.length} image{unused.length === 1 ? "" : "s"} in the folder no script uses</summary>
-          <p className="muted">Spare art, or names that don't match: Ren'Py calls an image by its file name, so <code>images/bg hall.png</code> is <code>bg hall</code>.</p>
+          <p className="muted">{engine === "renpy" ? <>Spare art, or names that don't match: Ren'Py calls an image by its file name, so <code>images/bg hall.png</code> is <code>bg hall</code>.</> : <>Spare art, or names that don't match the pictures and faces the events show.</>}</p>
           <ul>{unused.slice(0, 200).map((p) => <li key={p}><code>{p}</code></li>)}</ul>
         </details>
       )}

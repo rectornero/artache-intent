@@ -53,6 +53,14 @@
         "description": "Artache Intent sheet",
         "role": "Editor",
         "mimeType": "text/x-intent-sheet"
+      },
+      {
+        "ext": [
+          "intentproj"
+        ],
+        "name": "Intent project",
+        "description": "Artache Intent project",
+        "role": "Editor"
       }
     ],
     "android": {

@@ -26,8 +26,9 @@ jobs:
         with: { node-version: 22, cache: npm }
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
-      # The MCP connector ships inside the Windows app (see tauri.windows.conf.json).
-      - run: npm run mcp:build
+      # The MCP connector ships inside the Windows app as its own program, no Node needed
+      # (see tauri.windows.conf.json).
+      - run: npm run mcp:exe
       - run: npx tauri build
       - uses: actions/upload-artifact@v4
         with:

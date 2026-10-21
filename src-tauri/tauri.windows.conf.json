@@ -1,7 +1,7 @@
 {
   "bundle": {
     "resources": {
-      "../dist-mcp/intent-mcp.mjs": "intent-mcp.mjs"
+      "../dist-mcp/intent-mcp.exe": "intent-mcp.exe"
     }
   }
 }

@@ -164,6 +164,25 @@ export async function launchFile(): Promise<{ name: string; text: string } | nul
   return r ? { name: r[0].split(/[\\/]/).pop()!, text: r[1] } : null;
 }
 
+/** The project file the desktop app was opened with (double-click on .intentproj), if any. */
+export async function launchProject(): Promise<Uint8Array | null> {
+  if (!isTauri()) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  const path = await invoke<string | null>("opened_project").catch(() => null);
+  if (!path) return null;
+  const fs = await import("@tauri-apps/plugin-fs");
+  return fs.readFile(path);
+}
+
+/** Open a web page in the system browser (a new tab in the browser version). */
+export async function openExternal(url: string) {
+  if (isTauri()) {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    return openUrl(url);
+  }
+  window.open(url, "_blank", "noopener");
+}
+
 /** Exports: a folder on desktop/Android, a zip download in the browser. */
 export async function deliverExport(name: string, files: Record<string, string>) {
   if (isTauri()) {
