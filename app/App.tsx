@@ -96,13 +96,12 @@ export function App() {
     setView({ ...activeView, text });
     update(fromLayer(activeView.v, text, ok.config));
   };
-  // Leaving Draft converts every draft passage in the file at once, with
-  // Claude on the writer's own key. Without a key, passages stay as prose.
-  const switchLayer = async (l: Layer) => {
-    if (busy) return;
+  // Claude converts the file's draft passages: from the ✦ button, or when the
+  // writer leaves Draft. Without a key, passages stay as prose.
+  const convertDrafts = async () => {
     const src = project.files[file] ?? "";
     // Only passages with real, new prose count: empty ones and the starter hint stay put.
-    const all = l !== "draft" && ok && file.endsWith(".intent") ? draftBlocks(src) : [];
+    const all = ok && file.endsWith(".intent") ? draftBlocks(src) : [];
     const real = all.map((b) => b.prose.trim() !== "" && b.prose.trim() !== DRAFT_HINT);
     const reused = all.map((b, k) => (real[k] ? remembered(b.prose) ?? null : null));
     const blocks = all.filter((b, k) => real[k] && reused[k] === null);
@@ -127,6 +126,7 @@ export function App() {
             const f = sheetFileName("minigame", g);
             if (project.files[f] === undefined) setFile(f, newSheet("minigame", g, `First written about in ${file}.`));
           }
+          setView(null);
           say(`Claude converted ${what}.`, 8000, { label: "Undo", run: () => { update(src); setView(null); setLayer("draft"); } });
         } catch (e) {
           say(`Claude couldn't convert: ${explainFailure(e)}. Your prose is unchanged.`, 8000);
@@ -134,9 +134,14 @@ export function App() {
         setBusy(null);
       }
     }
+  };
+  const switchLayer = async (l: Layer) => {
+    if (busy) return;
+    if (l !== "draft") await convertDrafts();
     setView(null);
     setLayer(l);
   };
+  const pendingDrafts = file.endsWith(".intent") ? draftBlocks(project.files[file] ?? "").filter((b) => b.prose.trim() && b.prose.trim() !== DRAFT_HINT).length : 0;
 
   const say = (msg: string, ms = 2500, action: ToastAction | null = null) => {
     setToast(msg);
@@ -408,6 +413,11 @@ export function App() {
         )}
         {file.endsWith(".intent") && (
           <div className="toolbar" role="toolbar" aria-label="Layers">
+            {pendingDrafts > 0 && (
+              <button className="claude-go" onClick={() => { if (!busy) void convertDrafts(); }} disabled={!!busy} title={apiKey ? "Turn new prose into script with Claude" : "Add your Claude key in Settings first"} data-testid="convert-claude">
+                <span aria-hidden="true">✦</span> Convert with Claude <span className="count">{pendingDrafts}</span>
+              </button>
+            )}
             <div className="layer-tabs" role="tablist" aria-label="Layer">
               {(["draft", "play", "renpy"] as Layer[]).map((l) => (
                 <button key={l} role="tab" aria-selected={layer === l} className={layer === l ? "on" : ""} onClick={() => switchLayer(l)} data-testid={`layer-${l}`}>
@@ -416,7 +426,7 @@ export function App() {
               ))}
             </div>
             {layer !== "play" ? (
-              <span className="label">{layer === "draft" ? "Write as prose. Change tab to turn every new or edited passage into script." : "Edit the code. Lines Intent can't read stay as Ren'Py blocks."}</span>
+              <span className="label">{layer === "draft" ? "Write as prose. Press ✦ or change tab to turn it into script." : "Edit the code. Lines Intent can't read stay as Ren'Py blocks."}</span>
             ) : (
               <span className="label">Add a layer:</span>
             )}

@@ -310,3 +310,8 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 
 /* Keep clear of notches and system bars where the browser reports them. */
 .app { box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+
+/* The ✦ Convert with Claude button: shows only when there is prose to convert. */
+.toolbar button.claude-go { order: 99; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: var(--accent-text); border-color: var(--accent); border-radius: 999px; padding: 5px 12px; font-weight: 600; }
+.toolbar button.claude-go .count { background: color-mix(in srgb, var(--accent-text) 22%, transparent); border-radius: 999px; padding: 0 7px; font-size: 12px; }
+.toolbar button.claude-go:disabled { opacity: .6; }
