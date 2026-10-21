@@ -24,6 +24,9 @@ const PATHS: Record<string, string> = {
   songs: "M9 18V6l11-2v12 M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0z M20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
   copy: "M8 8h12v12H8z M16 8V4H4v12h4",
   history: "M3 12a9 9 0 1 0 3-6.7L3 8 M3 3v5h5 M12 7v5l3 2",
+  search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z M20 20l-4-4",
+  replace: "M4 8h11l-3-3 M20 16H9l3 3",
+  more: "M5 12h.01 M12 12h.01 M19 12h.01",
   outline: "M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01",
 };
 

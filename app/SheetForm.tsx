@@ -13,13 +13,15 @@ interface Props {
   onClose?: () => void;
   /** Claude drafts a new prompt from the sheet; throws with a message the form shows. */
   onDraftPrompt?: (kind: "image" | "song", sheet: Sheet, earlier: string[]) => Promise<string>;
+  /** A new name, given when the writer leaves the name field: renames the sheet everywhere. */
+  onRename?: (name: string) => boolean;
 }
 
 export function isStub(s: Sheet): boolean {
   return Object.values(s.fields).every((v) => !v.trim());
 }
 
-export function SheetForm({ text, usage, onChange, onJump, onClose, onDraftPrompt }: Props) {
+export function SheetForm({ text, usage, onChange, onJump, onClose, onDraftPrompt, onRename }: Props) {
   // The form keeps its own copy so a half-typed value (a trailing new line) survives
   // the round trip through text; outside edits to the text still come in.
   const [sheet, setSheet] = useState(() => parseSheet(text));
@@ -28,6 +30,9 @@ export function SheetForm({ text, usage, onChange, onJump, onClose, onDraftPromp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  // The name is typed freely and only applied when the field is left, so a rename happens once.
+  const [name, setName] = useState(sheet?.name ?? "");
+  useEffect(() => setName(sheet?.name ?? ""), [sheet?.name]);
   if (!sheet) return <div className="error-box">This sheet needs a first line like <code>@character Name</code>.</div>;
   const spec = SHEET_KINDS[sheet.kind];
   const set = (patch: Partial<Sheet>) => {
@@ -41,7 +46,9 @@ export function SheetForm({ text, usage, onChange, onJump, onClose, onDraftPromp
     <div className={`sheet k-${sheet.kind}`} data-testid="sheet">
       <div className="sheet-head">
         <span className={`sheet-kind k-${sheet.kind}`}>{spec.label}</span>
-        <input className="sheet-name" value={sheet.name} onChange={(e) => set({ name: e.target.value })} aria-label="Name" />
+        <input className="sheet-name" value={name} onChange={(e) => setName(e.target.value)} aria-label="Name" title="Renaming updates every script and sheet that mentions it"
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { setName(sheet.name); e.currentTarget.blur(); } }}
+          onBlur={() => { const n = name.trim(); if (!n) setName(sheet.name); else if (n !== sheet.name) { if (!onRename) set({ name: n }); else if (!onRename(n)) setName(sheet.name); } }} />
         {isStub(sheet) && <span className="badge">Written about, not designed yet</span>}
         {onClose && <button className="icon" onClick={onClose} aria-label="Close sheet">✕</button>}
       </div>

@@ -167,3 +167,11 @@ expressions: neutral, nervous
 - Fields with a short list of answers (gender, role, entrance side, setting, mood,
   item type, minigame type and difficulty) are dropdowns in the form; some also take
   a value of your own. An old `pronouns:` line is read as gender.
+
+## Find, replace and rename (0.3)
+
+- **Find** (the search button, or Ctrl+Shift+F) searches every script's Draft, Play and Code and every sheet. Code is off by default, since Intent writes most of it. Options: match case, whole word.
+- **Replace** works across the whole project or file by file. When both halves of a synced pair are replaced, the pair stays in sync.
+- **Renaming a sheet** (edit its name, or use Rename… in its ⋯ menu) renames the file and updates every whole-word mention in scripts and sheets, keeping each mention's case (LIMO → LUNA).
+- **Renaming or deleting a script** carries its Draft and Code versions and its sync record with it.
+- Every one of these saves the old text to History first, and the toast offers Undo.

@@ -17,6 +17,8 @@ import { BookView, PreviewNodes } from "./Preview.tsx";
 import { SheetForm, isStub } from "./SheetForm.tsx";
 import { Icon } from "./Icon.tsx";
 import { HistoryPanel } from "./HistoryPanel.tsx";
+import { SearchPanel } from "./SearchPanel.tsx";
+import { deleteFile, renameScript, renameSheet, type ReplaceResult } from "../src/core/search.ts";
 import { saveSnapshot } from "./history.ts";
 import type { LinkTarget } from "./intentMode.ts";
 import { type Sheet, detectMinigames, newSheet, sheetFileName, sheetNames, sheetUsage, SHEET_KINDS, type SheetKind } from "../src/core/sheets.ts";
@@ -24,17 +26,18 @@ import { SAMPLES, newProject } from "./samples.ts";
 import { deliverExport, whenSaveFails, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, savePrefs, saveFileAs, saveProjects, saveToFolder, type Project } from "./storage.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPrefs } from "./themes.ts";
 
-type Tab = "sheet" | "play" | "book" | "renpy" | "mv" | "report" | "bible" | "history";
+type Tab = "sheet" | "play" | "book" | "search" | "renpy" | "mv" | "report" | "bible" | "history";
 type MobileView = "files" | "write" | "preview";
 type ToastAction = { label: string; run: () => void };
 
 // The right panel: three groups instead of a row of tabs. Ren'Py code lives in the Code version.
 const PANEL_GROUPS: Array<{ id: string; label: string; icon: string; tabs: Tab[] }> = [
   { id: "read", label: "Read", icon: "story", tabs: ["play", "book"] },
+  { id: "find", label: "Find", icon: "search", tabs: ["search"] },
   { id: "export", label: "Export", icon: "engine", tabs: ["report", "mv", "renpy"] },
   { id: "tools", label: "Tools", icon: "data", tabs: ["history", "bible"] },
 ];
-const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
+const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", search: "Find", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
 
 function safeCompile(p: Project): CompileResult | { error: string } {
   try {
@@ -74,6 +77,7 @@ export function App() {
   const [model, setModel] = useState<ClaudeModel>(loadModel);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; file: string } | null>(null);
   const [reviewing, setReviewing] = useState<{ projectId: string; play: string; from: Version; to: Version; before: string; after: string; fromText: string } | null>(null);
 
   useEffect(() => {
@@ -260,6 +264,82 @@ export function App() {
 
   const openLink = (t: LinkTarget) => (t.stub ? createSheet(t.kind as SheetKind, t.name) : openSheet(t.file));
 
+  // Find, replace, rename and delete: whole-project changes, each saved to History first and undoable.
+  const openSearch = () => {
+    setTab("search");
+    setMobile("preview");
+    if (prefs.sidePanel === "hidden") setPrefs({ ...prefs, sidePanel: "right" });
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        openSearch();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  const openAt = (f: string, line: number) => {
+    const v: Version | null = f.endsWith(".draft") ? "draft" : f.endsWith(".rpy") ? "renpy" : f.endsWith(".intent") ? "play" : null;
+    setFileName(v ? f.replace(/\.\w+$/, ".intent") : f);
+    if (v) setLayer(v);
+    if (f.endsWith(".sheet")) setRawSheet(true);
+    setJump({ line, n: Date.now() });
+    setMobile("write");
+  };
+  const changeFiles = (files: Record<string, string>, before: Record<string, string>, changed: string[], label: string, done: string) => {
+    for (const f of changed) if (before[f] !== undefined) saveSnapshot(project.id, f, before[f], label);
+    setHistoryVersion((v) => v + 1);
+    const id = project.id;
+    setProjects((list) => list.map((p) => (p.id === id ? { ...p, files } : p)));
+    say(done, 8000, { label: "Undo", run: () => setProjects((list) => list.map((p) => (p.id === id ? { ...p, files: before } : p))) });
+  };
+  const applyReplace = (r: ReplaceResult, label: string) =>
+    changeFiles(r.files, project.files, r.changed, `Before: ${label}`, `${label}: ${r.count} change${r.count > 1 ? "s" : ""} in ${r.changed.length} file${r.changed.length > 1 ? "s" : ""}.`);
+  const renameSheetTo = (f: string, name: string): boolean => {
+    const old = ok?.sheets.find((x) => x.file === f)?.sheet.name ?? f;
+    try {
+      const r = renameSheet(project.files, f, name);
+      changeFiles(r.files, project.files, [f, ...r.changed], `Before renaming ${old}`, r.count ? `Renamed ${old} to ${name}. ${r.count} mention${r.count > 1 ? "s" : ""} updated.` : `Renamed ${old} to ${name}.`);
+      if (sheetFile === f) setSheetFile(r.to);
+      if (file === f) setFileName(r.to);
+      return true;
+    } catch (e) {
+      say(e instanceof Error ? e.message : String(e), 6000);
+      return false;
+    }
+  };
+  const renameAny = (f: string) => {
+    if (f.endsWith(".sheet")) {
+      const old = ok?.sheets.find((x) => x.file === f)?.sheet.name ?? "";
+      const n = prompt("New name. Every script and sheet that mentions it follows.", old);
+      if (n?.trim() && n.trim() !== old) renameSheetTo(f, n.trim());
+      return;
+    }
+    const n = prompt("New script file name", f)?.trim();
+    if (!n || n === f) return;
+    const to = n.endsWith(".intent") ? n : `${n}.intent`;
+    try {
+      changeFiles(renameScript(project.files, f, to), project.files, [], "", `Renamed ${f} to ${to}.`);
+      if (file === f) setFileName(to);
+    } catch (e) {
+      say(e instanceof Error ? e.message : String(e), 6000);
+    }
+  };
+  const deleteAny = (f: string) => {
+    const name = f.endsWith(".sheet") ? (ok?.sheets.find((x) => x.file === f)?.sheet.name ?? f) : f;
+    if (!confirm(f.endsWith(".intent") ? `Delete ${name} with its Draft and Code versions?` : `Delete the sheet ${name}?`)) return;
+    const gone = Object.keys(project.files).filter((x) => x === f || (f.endsWith(".intent") && (x === versionFile(f, "draft") || x === versionFile(f, "renpy"))));
+    changeFiles(deleteFile(project.files, f), project.files, gone, "Before delete", `Deleted ${name}.`);
+    if (sheetFile === f) setSheetFile(null);
+  };
+  const rowMore = (f: string) => (
+    <button className="row-more" aria-label="More" title="Rename or delete" onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setRowMenu({ x: r.left, y: r.bottom + 4, file: f }); }}>
+      <Icon name="more" size={16} />
+    </button>
+  );
+
   // What the preview shows: the scene or block under the cursor.
   const focus = useMemo(() => {
     if (!script) return null;
@@ -368,6 +448,7 @@ export function App() {
         <span className={`status ${errors ? "bad" : warnings ? "warn" : "good"}`} data-testid="status">
           {"error" in result ? "Settings error" : errors ? `${errors} error${errors > 1 ? "s" : ""}` : warnings ? `${warnings} warning${warnings > 1 ? "s" : ""}` : "Ready"}
         </span>
+        <button className="icon" onClick={openSearch} aria-label="Find in project" title="Find in project (Ctrl+Shift+F)" data-testid="open-search"><Icon name="search" size={17} /></button>
         <button className="primary wide-only" onClick={doExport} data-testid="export">Export</button>
         <button className="icon wide-only" onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings">⚙</button>
         <div className="more phone-only">
@@ -394,6 +475,7 @@ export function App() {
               <button className={f === file ? "active" : ""} onClick={() => { setFileName(f); setMobile("write"); }}>
                 {f === "intent.json" ? "⚙ Project settings" : f}
               </button>
+              {f.endsWith(".intent") && rowMore(f)}
             </li>
           ))}
         </ul>
@@ -421,6 +503,7 @@ export function App() {
                     <button className={f === file || f === sheetFile ? "active" : ""} onClick={() => { setFileName(f); setRawSheet(false); setMobile("write"); }}>
                       {sheet.name}{isStub(sheet) && <span className="badge">to design</span>}
                     </button>
+                    {rowMore(f)}
                   </li>
                 ))}
               </ul>
@@ -514,6 +597,7 @@ export function App() {
               onChange={update}
               onJump={(f, line) => { setFileName(f); setJump({ line, n: Date.now() }); }}
               onDraftPrompt={draftPrompt}
+              onRename={(n) => renameSheetTo(file, n)}
             />
           </div>
         ) : (
@@ -575,7 +659,10 @@ export function App() {
                 onJump={(f, line) => { setFileName(f); setJump({ line, n: Date.now() }); setMobile("write"); }}
                 onClose={() => { setSheetFile(null); setTab("play"); }}
                 onDraftPrompt={draftPrompt}
+                onRename={(n) => renameSheetTo(sheetFile, n)}
               />
+            ) : tab === "search" ? (
+              <SearchPanel files={project.files} onOpen={openAt} onReplace={applyReplace} />
             ) : tab === "play" || tab === "book" || tab === "sheet" ? (
               focus ? (
                 tab === "book" ? (
@@ -616,6 +703,14 @@ export function App() {
         ))}
       </nav>
 
+      {rowMenu && (
+        <div className="ctx-back" onClick={() => setRowMenu(null)}>
+          <div className="ctx-menu" role="menu" style={{ left: Math.min(rowMenu.x, window.innerWidth - 230), top: Math.min(rowMenu.y, window.innerHeight - 120) }} onClick={(e) => e.stopPropagation()}>
+            <button role="menuitem" onClick={() => { const f = rowMenu.file; setRowMenu(null); renameAny(f); }}>Rename…</button>
+            <button role="menuitem" className="danger" onClick={() => { const f = rowMenu.file; setRowMenu(null); deleteAny(f); }}>Delete…</button>
+          </div>
+        </div>
+      )}
       {menu && (
         <div className="ctx-back" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}>
           <div className="ctx-menu" role="menu" style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 220) }} onClick={(e) => e.stopPropagation()}>
@@ -624,6 +719,9 @@ export function App() {
                 <div className="ctx-title">“{menu.text}” · {SHEET_KINDS[menu.link.kind as SheetKind].label}</div>
                 <button role="menuitem" onClick={() => { openSheet(menu.link!.file); setMenu(null); }}>
                   <i className={`kind-dot k-${menu.link.kind}`} />Open sheet
+                </button>
+                <button role="menuitem" onClick={() => { const f = menu.link!.file; setMenu(null); renameAny(f); }}>
+                  <i className="kind-dot" />Rename everywhere…
                 </button>
                 <button role="menuitem" onClick={() => { setNoLink(menu.text, true); setMenu(null); say(`“${menu.text}” is plain text now. Undo in Project settings (noLink).`); }}>
                   <i className="kind-dot" />Plain text, not a link
@@ -783,8 +881,8 @@ function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, setModel, 
         <h3>Claude</h3>
         <div className="claude-key">
           <p className="muted">
-            With your Anthropic API key, Claude turns draft passages into script when you press ✦ Convert with Claude. Without it, drafts stay as prose. The key stays on this
-            device: it is never saved in your project or its exports. Get one at console.anthropic.com → API keys.
+            With your Anthropic API key, Claude keeps Draft, Play and Code in step when you press ✦ Update, and drafts image and song prompts on sheets. Without it,
+            the versions stay as you wrote them. The key stays on this device: it is never saved in your project or its exports. Get one at console.anthropic.com → API keys.
           </p>
           {apiKey ? (
             <div className="row">
