@@ -125,8 +125,8 @@ export async function claudeUpdate(apiKey: string, model: ClaudeModel, req: Upda
     .stream({
       model,
       max_tokens: 64000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
+      // Haiku 5.5 has no server-side fallback; the others retry a declined request on another model.
+      ...(model === "claude-haiku-5-5" ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
       thinking: { type: "adaptive" },
       output_config: { effort: "medium", format: FORMAT },
       system: SYSTEM,

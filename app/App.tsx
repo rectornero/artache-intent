@@ -21,7 +21,7 @@ import { saveSnapshot } from "./history.ts";
 import type { LinkTarget } from "./intentMode.ts";
 import { detectMinigames, newSheet, sheetFileName, sheetNames, sheetUsage, SHEET_KINDS, type SheetKind } from "../src/core/sheets.ts";
 import { SAMPLES, newProject } from "./samples.ts";
-import { deliverExport, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, savePrefs, saveFileAs, saveProjects, saveToFolder, type Project } from "./storage.ts";
+import { deliverExport, whenSaveFails, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, savePrefs, saveFileAs, saveProjects, saveToFolder, type Project } from "./storage.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPrefs } from "./themes.ts";
 
 type Tab = "sheet" | "play" | "book" | "renpy" | "mv" | "report" | "bible" | "history";
@@ -65,8 +65,11 @@ export function App() {
   const [apiKey, setApiKey] = useState(loadApiKey);
   const [model, setModel] = useState<ClaudeModel>(loadModel);
   const [historyVersion, setHistoryVersion] = useState(0);
-  const [reviewing, setReviewing] = useState<{ from: Version; to: Version; before: string; after: string; fromText: string } | null>(null);
+  const [reviewing, setReviewing] = useState<{ projectId: string; play: string; from: Version; to: Version; before: string; after: string; fromText: string } | null>(null);
 
+  useEffect(() => {
+    whenSaveFails(() => setToast("This device refused to save your work (storage full or private mode). Use Save as file or Export to keep it."));
+  }, []);
   const theme = activeTheme(prefs);
   useEffect(() => {
     applyTheme(theme, prefs);
@@ -131,21 +134,28 @@ export function App() {
         setBusy(null);
       }
     }
-    setReviewing({ from, to, before: target, after: proposed, fromText: after });
+    setReviewing({ projectId: project.id, play: file, from, to, before: target, after: proposed, fromText: after });
   };
   const acceptUpdate = (r: NonNullable<typeof reviewing>) => {
-    const f = vFile(r.to);
-    saveSnapshot(project.id, f, r.before, `Before update from ${VERSION_NAMES[r.from]}`);
+    // The update belongs to the script it was asked for, even if another file is open now.
+    const target = projects.find((p) => p.id === r.projectId);
+    const f = versionFile(r.play, r.to);
+    if (!target) return setReviewing(null);
+    if ((target.files[f] ?? "") !== r.before || (target.files[versionFile(r.play, r.from)] ?? "") !== r.fromText) {
+      setReviewing(null);
+      return say("The text changed while Claude was working, so nothing was applied. Press ✦ Update again.", 8000);
+    }
+    saveSnapshot(r.projectId, f, r.before, `Before update from ${VERSION_NAMES[r.from]}`);
     setHistoryVersion((v) => v + 1);
-    const files = { ...project.files, [f]: r.after };
-    files[SYNC_FILE] = markSynced(files, file, pairOf(r.from, r.to)!, { [r.from]: r.fromText, [r.to]: r.after });
+    const files = { ...target.files, [f]: r.after };
+    files[SYNC_FILE] = markSynced(files, r.play, pairOf(r.from, r.to)!, { [r.from]: r.fromText, [r.to]: r.after });
     for (const g of r.to === "play" ? detectMinigames(r.after) : []) {
       const sf = sheetFileName("minigame", g);
-      if (files[sf] === undefined) files[sf] = newSheet("minigame", g, `First written about in ${file}.`);
+      if (files[sf] === undefined) files[sf] = newSheet("minigame", g, `First written about in ${r.play}.`);
     }
-    setProjects((list) => list.map((p) => (p.id === project.id ? { ...p, files } : p)));
+    setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files } : p)));
     setReviewing(null);
-    say(`${VERSION_NAMES[r.to]} updated.`, 8000, { label: "Undo", run: () => setFile(f, r.before) });
+    say(`${VERSION_NAMES[r.to]} updated.`, 8000, { label: "Undo", run: () => setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files: { ...p.files, [f]: r.before } } : p))) });
   };
   const switchLayer = (l: Layer) => setLayer(l);
 
