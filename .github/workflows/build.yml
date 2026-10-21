@@ -61,6 +61,10 @@ jobs:
           # Target the latest Android (16, API 36); still installs on Android 7+ (minSdk 24).
           sed -i -E 's/(compileSdk|targetSdk) = [0-9]+/\1 = 36/' src-tauri/gen/android/app/build.gradle.kts
           grep -E "compileSdk|targetSdk|minSdk" src-tauri/gen/android/app/build.gradle.kts
+          # Keep the app clear of the status bar and notch (edge to edge on Android 15+).
+          MA=$(find src-tauri/gen/android/app/src/main -name MainActivity.kt | head -1)
+          { grep -m1 '^package ' "$MA"; echo; cat src-tauri/android/MainActivity.kt; } > "$MA.new" && mv "$MA.new" "$MA"
+          cat "$MA"
           # arm64 covers every current phone and keeps the APK small.
           npx tauri android build --apk --debug --ci --target aarch64
       - uses: actions/upload-artifact@v4

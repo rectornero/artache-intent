@@ -293,3 +293,6 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .sheet-fields .own-field button.icon, .sheet-fields .colour-field button.icon { background: var(--panel2); border-radius: 10px; width: 36px; height: 36px; color: var(--muted); }
 .sheet-fields .colour-field input[type="color"] { width: 40px; height: 36px; padding: 2px; border-radius: 10px; cursor: pointer; }
 .sheet-fields .colour-field code { font-size: 13px; color: var(--text); }
+
+/* Keep clear of notches and system bars where the browser reports them. */
+.app { box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
