@@ -5,7 +5,7 @@ import { slug } from "../src/core/parser.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
 import { draftBlocks, fromLayer, replaceDrafts, toLayer, type Layer, type LayerView } from "../src/core/layers.ts";
-import { claudeConvert, explainFailure, loadApiKey, remembered, saveApiKey } from "./claude.ts";
+import { CLAUDE_MODELS, claudeConvert, explainFailure, loadApiKey, loadModel, remembered, saveApiKey, saveModel, type ClaudeModel } from "./claude.ts";
 
 const DRAFT_HINT = "Write freely here, like a book.";
 import { parseScript } from "../src/core/parser.ts";
@@ -58,6 +58,7 @@ export function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [toastAction, setToastAction] = useState<ToastAction | null>(null);
   const [apiKey, setApiKey] = useState(loadApiKey);
+  const [model, setModel] = useState<ClaudeModel>(loadModel);
 
   const theme = activeTheme(prefs);
   useEffect(() => {
@@ -118,7 +119,7 @@ export function App() {
         setBusy(`Claude is converting ${what}…`);
         try {
           const before = src.split("\n").slice(0, blocks[0].open).join("\n");
-          const fresh = await claudeConvert(apiKey, blocks.map((b) => b.prose), ok.config, ok.sheets.map((x) => x.sheet), before);
+          const fresh = await claudeConvert(apiKey, model, blocks.map((b) => b.prose), ok.config, ok.sheets.map((x) => x.sheet), before);
           let next = 0;
           const scripts = all.map((b, k) => (!real[k] ? null : reused[k] ?? fresh[next++]));
           update(replaceDrafts(src, scripts));
@@ -575,7 +576,7 @@ export function App() {
           </div>
         </div>
       )}
-      {settingsOpen && <Settings prefs={prefs} setPrefs={setPrefs} theme={theme} apiKey={apiKey} setApiKey={(k) => { saveApiKey(k); setApiKey(k.trim()); }} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <Settings prefs={prefs} setPrefs={setPrefs} theme={theme} apiKey={apiKey} setApiKey={(k) => { saveApiKey(k); setApiKey(k.trim()); }} model={model} setModel={(m) => { saveModel(m); setModel(m); }} onClose={() => setSettingsOpen(false)} />}
       {busy && <div className="busy" role="status"><span className="spinner" />{busy}</div>}
       {toast && (
         <div className="toast" role="status">
@@ -621,7 +622,7 @@ function MvView({ json }: { json: string }) {
   );
 }
 
-function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, onClose }: { prefs: UiPrefs; setPrefs: (p: UiPrefs) => void; theme: Theme; apiKey: string; setApiKey: (k: string) => void; onClose: () => void }) {
+function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, setModel, onClose }: { prefs: UiPrefs; setPrefs: (p: UiPrefs) => void; theme: Theme; apiKey: string; setApiKey: (k: string) => void; model: ClaudeModel; setModel: (m: ClaudeModel) => void; onClose: () => void }) {
   const [keyDraft, setKeyDraft] = useState("");
   const custom: Theme = prefs.custom ?? { ...structuredClone(theme), id: "custom", label: "Custom" };
   const setCustom = (t: Theme) => setPrefs({ ...prefs, custom: t, themeId: "custom" });
@@ -677,7 +678,7 @@ function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, onClose }: { pref
         <h3>Claude</h3>
         <div className="claude-key">
           <p className="muted">
-            With your Anthropic API key, Claude turns draft passages into script when you change tab. Without it, drafts stay as prose. The key stays on this
+            With your Anthropic API key, Claude turns draft passages into script when you press ✦ or change tab. Without it, drafts stay as prose. The key stays on this
             device: it is never saved in your project or its exports. Get one at console.anthropic.com → API keys.
           </p>
           {apiKey ? (
@@ -691,6 +692,14 @@ function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, onClose }: { pref
               <button className="primary" disabled={!keyDraft.trim()} onClick={() => { setApiKey(keyDraft); setKeyDraft(""); }}>Save key</button>
             </div>
           )}
+          <div className="model-pick" role="radiogroup" aria-label="Claude model">
+            {CLAUDE_MODELS.map((m) => (
+              <button key={m.id} role="radio" aria-checked={model === m.id} className={model === m.id ? "on" : ""} onClick={() => setModel(m.id)}>
+                <b>{m.label}</b>
+                <span>{m.note}</span>
+              </button>
+            ))}
+          </div>
         </div>
         <footer className="about">
           <img src={theme.brand.logo} alt={theme.brand.name} />

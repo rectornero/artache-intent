@@ -7,7 +7,32 @@ import type { ProjectConfig } from "../src/core/config.ts";
 import type { Sheet } from "../src/core/sheets.ts";
 
 const KEY = "artache-intent.anthropic-key";
-export const CLAUDE_MODEL = "claude-opus-5-5";
+const MODEL_KEY = "artache-intent.claude-model";
+
+export const CLAUDE_MODELS = [
+  { id: "claude-sonnet-5-5", label: "Sonnet 5.5", note: "Balanced: fast and affordable" },
+  { id: "claude-opus-5-5", label: "Opus 5.5", note: "Most careful, costs more" },
+  { id: "claude-haiku-5-5", label: "Haiku 5.5", note: "Fastest and cheapest" },
+] as const;
+export type ClaudeModel = (typeof CLAUDE_MODELS)[number]["id"];
+
+export function loadModel(): ClaudeModel {
+  try {
+    const m = localStorage.getItem(MODEL_KEY);
+    if (CLAUDE_MODELS.some((x) => x.id === m)) return m as ClaudeModel;
+  } catch {
+    // Storage blocked: use the default.
+  }
+  return "claude-sonnet-5-5";
+}
+
+export function saveModel(m: ClaudeModel) {
+  try {
+    localStorage.setItem(MODEL_KEY, m);
+  } catch {
+    // Storage blocked: the choice lasts for this session only.
+  }
+}
 
 export function loadApiKey(): string {
   try {
@@ -79,13 +104,13 @@ const done = new Map<string, string>();
 export const remembered = (prose: string) => done.get(prose.trim());
 
 /** One script per passage, in order. Throws on any failure; the caller falls back to rules. */
-export async function claudeConvert(apiKey: string, passages: string[], cfg: ProjectConfig, sheets: Sheet[], before: string): Promise<string[]> {
+export async function claudeConvert(apiKey: string, model: ClaudeModel, passages: string[], cfg: ProjectConfig, sheets: Sheet[], before: string): Promise<string[]> {
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   const body = passages.map((p, i) => `<passage n="${i + 1}">\n${p}\n</passage>`).join("\n\n");
   const message = await client.beta.messages
     .stream({
-      model: CLAUDE_MODEL,
+      model,
       max_tokens: 16000,
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
