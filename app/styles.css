@@ -327,3 +327,25 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .check-note { margin-top: 6px; font-size: 13px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--text); }
 .check-note::before { content: "Check: "; font-weight: 700; color: var(--accent); }
 @media (max-width: 820px) { .convert-grid { grid-template-columns: 1fr; } }
+
+/* History: saved versions, compare, restore */
+.history { padding: 16px; }
+.history-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.history-head > div { flex: 1; min-width: 0; }
+.history-head h3 { margin: 2px 0 2px; font-family: var(--font-display); font-size: 18px; }
+.history-head p { margin: 0; font-size: 13px; }
+.history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.history-list li { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.history-list li.open { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.history-row { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "label stats" "when stats"; gap: 2px 10px; width: 100%; text-align: left; padding: 10px 12px; }
+.history-label { grid-area: label; font-weight: 600; }
+.history-row .muted { grid-area: when; font-size: 12px; }
+.history-stats { grid-area: stats; align-self: center; font-size: 13px; color: var(--muted); }
+.history-stats .add { color: #2f8f5b; }
+.history-stats .del { color: var(--accent); }
+.history-body { padding: 0 12px 12px; }
+.history-body .small { font-size: 12px; }
+.diff { font-family: var(--font-editor); font-size: 12.5px; line-height: 1.5; max-height: 40vh; overflow: auto; border-radius: 8px; background: var(--panel2); padding: 8px; white-space: pre-wrap; }
+.diff-add { background: color-mix(in srgb, #2f8f5b 14%, transparent); }
+.diff-del { background: color-mix(in srgb, var(--accent) 12%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.history .empty { padding: 20px 0; text-align: center; }

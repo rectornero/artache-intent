@@ -12,13 +12,15 @@ import { parseScript } from "../src/core/parser.ts";
 import { BookView, PreviewNodes } from "./Preview.tsx";
 import { SheetForm, isStub } from "./SheetForm.tsx";
 import { Icon } from "./Icon.tsx";
+import { HistoryPanel } from "./HistoryPanel.tsx";
+import { saveSnapshot } from "./history.ts";
 import type { LinkTarget } from "./intentMode.ts";
 import { detectMinigames, newSheet, sheetFileName, sheetNames, sheetUsage, SHEET_KINDS, type SheetKind } from "../src/core/sheets.ts";
 import { SAMPLES, newProject } from "./samples.ts";
 import { deliverExport, isTauri, launchFile, loadPrefs, loadProjects, openFiles, openFolder, savePrefs, saveFileAs, saveProjects, saveToFolder, type Project } from "./storage.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, THEMES, type Theme, type UiPrefs } from "./themes.ts";
 
-type Tab = "sheet" | "play" | "book" | "renpy" | "mv" | "report" | "bible";
+type Tab = "sheet" | "play" | "book" | "renpy" | "mv" | "report" | "bible" | "history";
 type MobileView = "files" | "write" | "preview";
 type ToastAction = { label: string; run: () => void };
 
@@ -59,6 +61,7 @@ export function App() {
   const [toastAction, setToastAction] = useState<ToastAction | null>(null);
   const [apiKey, setApiKey] = useState(loadApiKey);
   const [model, setModel] = useState<ClaudeModel>(loadModel);
+  const [historyVersion, setHistoryVersion] = useState(0);
   const [reviewing, setReviewing] = useState<{ src: string; items: Array<{ k: number; prose: string; script: string }>; scripts: Array<string | null> } | null>(null);
 
   const theme = activeTheme(prefs);
@@ -132,6 +135,8 @@ export function App() {
     setReviewing({ src, items: all.flatMap((b, k) => (scripts[k] === null ? [] : [{ k, prose: b.prose, script: scripts[k]! }])), scripts });
   };
   const applyConversion = (src: string, scripts: Array<string | null>, note: string) => {
+    saveSnapshot(project.id, file, src, "Before Claude conversion");
+    setHistoryVersion((v) => v + 1);
     update(replaceDrafts(src, scripts));
     for (const g of scripts.flatMap((x) => (x ? detectMinigames(x) : []))) {
       const f = sheetFileName("minigame", g);
@@ -480,9 +485,9 @@ export function App() {
       {sideOpen && (
         <section className="panel">
           <nav className="tabs" role="tablist">
-            {([...(sheetFile && project.files[sheetFile] !== undefined ? ["sheet"] : []), "play", "book", "renpy", "mv", "report", "bible"] as Tab[]).map((t) => (
+            {([...(sheetFile && project.files[sheetFile] !== undefined ? ["sheet"] : []), "play", "book", "renpy", "mv", "report", "bible", "history"] as Tab[]).map((t) => (
               <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-                {{ sheet: `◆ ${ok?.sheets.find((x) => x.file === sheetFile)?.sheet.name ?? "Sheet"}`, play: "Preview", book: "Book", renpy: "Ren'Py", mv: "RPG Maker MV", report: "Report", bible: "Bible" }[t]}
+                {{ sheet: `◆ ${ok?.sheets.find((x) => x.file === sheetFile)?.sheet.name ?? "Sheet"}`, play: "Preview", book: "Book", renpy: "Ren'Py", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" }[t]}
               </button>
             ))}
           </nav>
@@ -518,6 +523,9 @@ export function App() {
               <pre className="code">{script ? result.files[`renpy/${slug(script.file.replace(/\.[^.]+$/, ""))}.rpy`] ?? "" : result.files["renpy/intent_defs.rpy"]}</pre>
             ) : tab === "mv" ? (
               <MvView json={result.files["mv/CommonEvents.intent.json"]} />
+            ) : tab === "history" ? (
+              <HistoryPanel project={project.id} file={file} text={project.files[file] ?? ""} version={historyVersion}
+                onRestore={(t) => { update(t); setView(null); say("Version restored. The text before it is saved in History."); }} />
             ) : tab === "report" ? (
               <pre className="code wrap">{result.files["renpy/REPORT.md"]}{"\n\n"}{result.files["mv/REPORT.md"]}</pre>
             ) : (
