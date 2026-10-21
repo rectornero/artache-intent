@@ -141,12 +141,13 @@ export function draftBlocks(source: string): DraftBlock[] {
   return out;
 }
 
-/** Swap each draft passage for its script, one entry per draftBlocks() result. */
-export function replaceDrafts(source: string, scripts: string[]): string {
+/** Swap each draft passage for its script, one entry per draftBlocks() result; null keeps the passage. */
+export function replaceDrafts(source: string, scripts: Array<string | null>): string {
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
   const blocks = draftBlocks(source);
   for (let k = blocks.length - 1; k >= 0; k--) {
     const b = blocks[k];
+    if (scripts[k] === null || scripts[k] === undefined) continue;
     const script = (scripts[k] ?? "").split("\n").map((l) => (l ? b.pad + l : l));
     lines.splice(b.open, b.close - b.open + 1, ...script);
   }

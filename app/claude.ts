@@ -74,6 +74,10 @@ function context(cfg: ProjectConfig, sheets: Sheet[], before: string): string {
   ].join("\n\n");
 }
 
+// Passages Claude already converted this session: the same prose never costs a second call.
+const done = new Map<string, string>();
+export const remembered = (prose: string) => done.get(prose.trim());
+
 /** One script per passage, in order. Throws on any failure; the caller falls back to rules. */
 export async function claudeConvert(apiKey: string, passages: string[], cfg: ProjectConfig, sheets: Sheet[], before: string): Promise<string[]> {
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
@@ -96,6 +100,7 @@ export async function claudeConvert(apiKey: string, passages: string[], cfg: Pro
   const text = message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
   const out = (JSON.parse(text) as { passages: Array<{ script: string }> }).passages.map((p) => p.script.trim());
   if (out.length !== passages.length) throw new Error(`got ${out.length} passages back, expected ${passages.length}`);
+  passages.forEach((p, i) => done.set(p.trim(), out[i]));
   return out;
 }
 

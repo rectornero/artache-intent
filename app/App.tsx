@@ -5,7 +5,9 @@ import { slug } from "../src/core/parser.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
 import { draftBlocks, fromLayer, replaceDrafts, toLayer, type Layer, type LayerView } from "../src/core/layers.ts";
-import { claudeConvert, explainFailure, loadApiKey, saveApiKey } from "./claude.ts";
+import { claudeConvert, explainFailure, loadApiKey, remembered, saveApiKey } from "./claude.ts";
+
+const DRAFT_HINT = "Write freely here, like a book.";
 import { parseScript } from "../src/core/parser.ts";
 import { BookView, PreviewNodes } from "./Preview.tsx";
 import { SheetForm, isStub } from "./SheetForm.tsx";
@@ -99,8 +101,16 @@ export function App() {
   const switchLayer = async (l: Layer) => {
     if (busy) return;
     const src = project.files[file] ?? "";
-    const blocks = l !== "draft" && ok && file.endsWith(".intent") ? draftBlocks(src) : [];
-    if (ok && blocks.length) {
+    // Only passages with real, new prose count: empty ones and the starter hint stay put.
+    const all = l !== "draft" && ok && file.endsWith(".intent") ? draftBlocks(src) : [];
+    const real = all.map((b) => b.prose.trim() !== "" && b.prose.trim() !== DRAFT_HINT);
+    const reused = all.map((b, k) => (real[k] ? remembered(b.prose) ?? null : null));
+    const blocks = all.filter((b, k) => real[k] && reused[k] === null);
+    if (ok && reused.some((r) => r !== null) && !blocks.length) {
+      // Everything was converted before (say, after Undo): no call needed.
+      update(replaceDrafts(src, reused));
+      say("Converted again from last time, no new Claude call.", 8000, { label: "Undo", run: () => { update(src); setView(null); setLayer("draft"); } });
+    } else if (ok && blocks.length) {
       const n = blocks.length;
       const what = `${n} draft passage${n > 1 ? "s" : ""}`;
       if (!apiKey) {
@@ -109,9 +119,11 @@ export function App() {
         setBusy(`Claude is converting ${what}…`);
         try {
           const before = src.split("\n").slice(0, blocks[0].open).join("\n");
-          const scripts = await claudeConvert(apiKey, blocks.map((b) => b.prose), ok.config, ok.sheets.map((x) => x.sheet), before);
+          const fresh = await claudeConvert(apiKey, blocks.map((b) => b.prose), ok.config, ok.sheets.map((x) => x.sheet), before);
+          let next = 0;
+          const scripts = all.map((b, k) => (!real[k] ? null : reused[k] ?? fresh[next++]));
           update(replaceDrafts(src, scripts));
-          for (const g of scripts.flatMap(detectMinigames)) {
+          for (const g of fresh.flatMap(detectMinigames)) {
             const f = sheetFileName("minigame", g);
             if (project.files[f] === undefined) setFile(f, newSheet("minigame", g, `First written about in ${file}.`));
           }
@@ -239,7 +251,7 @@ export function App() {
 
   const insertBlock = (kind: "draft" | "renpy" | "mv") => {
     const lines = source.split("\n");
-    const hint = { draft: "Write freely here, like a book.", renpy: "# Ren'Py code, passed through as is", mv: "// MV script call, passed through as is" }[kind];
+    const hint = { draft: DRAFT_HINT, renpy: "# Ren'Py code, passed through as is", mv: "// MV script call, passed through as is" }[kind];
     const at = Math.min(cursorLine, lines.length);
     lines.splice(at, 0, "", `::: ${kind}`, hint, ":::", "");
     update(lines.join("\n"));
