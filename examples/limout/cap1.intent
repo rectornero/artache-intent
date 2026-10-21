@@ -1,0 +1,84 @@
+# CHAPTER 1 · The Stairwell
+## The body
+
+// Example built from the worked example in the LimOut Script spec (v0.1).
+@alias neu = neutral
+
+@macro free_arrives
+[BG stairwell]
+[MIRIAM neutral]
+[F neu, enters from right]
++ met: FREE
+@end
+
+[CG bruno body]
+[SOUND breath]
+Behind me someone breathes hard through their nose.
+
+@free_arrives
+Mr. Free, from the seventh floor, in his coat, with his briefcase.
+He looks at Mr. Bruno the way you look at a wrong receipt.
+
+FREE: Go back upstairs.
+
+He doesn't look at me. Nobody ever looks at me, and that's what I like best.
+
+[MUSIC guest]
+[MIRIAM copying FREE]
+(as FREE) Weight on the right foot.
+(as FREE) Eyes a little above things, as if everything cost too much.
++ copied: FREE
+(as FREE) I think: Bruno knew about the fifth floor. | He does.
+
+M(F): The fifth floor.
+
+[MUSIC building]
+[FREE scared]
+[SHAKE]
+FREE: What did you say?
+- Who told you that?
+
+[MIRIAM neutral]
+[FREE leaves fast]
++ evidence: fifth floor
+(hollow) ~One, two, three.~
+
+## The stairs
+
+? Do I follow him?
+> Follow Free upstairs (+ flag: followed_free)
+    I go up two steps behind him. He doesn't notice.
+> Stay with Mr. Bruno
+    I stay. Somebody has to.
+
+IF followed_free
+    On the seventh floor his door is already closing.
+END
+
+[T C, close]
+TONY: I came in at [[half past twelve | He says it smoothly, like a coin sliding into the right slot.]]
+“Emergency services, what's your emergency?”
+
+>> INVESTIGATE: At the bottom of the stairwell [CG bruno body]
+  * The glasses (important, + evidence: glasses)
+      Intact. The lenses, the thin frame, the arms folded neatly.
+  * The keys
+      His bunch of keys, hooked to his belt.
+  - empty: White marble. Clean, as always.
+  - done: I've seen enough.
+
+>> MIND: TONY
+  sign: His thumb turns the crown of his watch, back and forth.
+  sign (false): His shoes are untied.
+  feels: fear / grief / *excitement* / boredom
+  thinks: I've never seen that old man before. / *Only I know.* / I have to get out of here.
+
+>> PRESENT: If Mr. Bruno fell on his own, what doesn't add up?
+  answer: glasses
+  thud: The thud says he fell. I already know that. It doesn't say how.
+  else: No. It's not this.
+
+[Free comes down slowly, the neon flickers twice, then the music drops out]
+TODO: Juu reacts here
+
+>> DRAFT: Juu and Miriam on the roof, Juu talks about buildings she'd design

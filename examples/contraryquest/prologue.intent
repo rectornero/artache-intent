@@ -1,0 +1,78 @@
+// Examples from the Quest Script deck. Details are placeholders, not canon.
+
+@npc Lena aka Le
+  role: grocer, childhood friend
+  home: [[Fourleaves]] / Lena's Groceries
+  voice: teasing, warm, talks fast
+  trust: 20
+  romance: no
+  ~ she hears every rumor in town
+
+@npc Marco aka Ma
+  role: blacksmith
+
+@npc Nina: Lena's shy daughter
+
+@map Route 1 aka R1
+  type: route
+  exits: south [[Fourleaves]], north [[Forest Trail 1]]
+  layout:
+    ####N#####
+    #..T..~~.#
+    #.O...~~.#
+    ####S#####
+  legend: T tree, O [[Fallen Oak]], ~ pond
+
+@aka axe = Chopping Axe
+@aka bread = Crisp Bread
+
+@talk Le
+  Le: Say hi to Agata for me.
+
+@talk Le when: step 1000
+  Le (smile): Morning, sleepyhead!
+  Le: Agata's bread is ready.
+  ? Take the bread
+    ! give bread
+    ! step 2000
+    ! trust Lena +5
+  ? Ask about the bridge
+    Le: Ask Marco. He's furious.
+  ? Leave
+    Le (pout): Don't let it go cold!
+
+@event Fallen Oak
+  at: [[R1]] (14,9)
+  look: a huge oak blocking the path
+  trigger: action
+  when: not has axe
+    It's far too thick to push aside.
+  when: has axe
+    ! sfx Chop x3
+    ! give Oak Log x2
+    ! erase
+  ~ make the chopping feel heavy
+
+@quest main The Broken Bridge
+  id: MQ-01
+  giver: [[Marco]]
+  starts: step 3000
+  steps:
+    1. Chop 5 Oak Logs on [[Route 1]]
+    2. Bring them to [[Marco]]
+  reward: TBD
+
+@edit npc Lena
+  trust: 40
+
+@edit quest MQ-01
+  + steps: 3. Show the logs to Lena
+  - reward
+
+## Day 1 morning
+! fade in
+! bgm Village
+AGATA: Nero. The sun is up and so should you be.
+NERO: Five more minutes.
+! wait 1s
+! quest start MQ-01

@@ -1,0 +1,20 @@
+{
+  "name": "ContraryQuest",
+  "targets": ["mv"],
+  "narrator": null,
+  "doubleBrackets": "link",
+  "cast": {
+    "NERO": { "id": "nero", "display": "Nero", "face": ["Bust_Nero", 0] },
+    "AGATA": { "id": "agata", "display": "Agata", "face": ["Bust_Agata", 0] }
+  },
+  "assets": {
+    "music": { "Village": "Town1" },
+    "sound": { "Chop": "Damage1", "Door1": "Door1" }
+  },
+  "mv": {
+    "screenWidth": 1280,
+    "screenHeight": 720,
+    "variables": { "Story Step": 1 },
+    "items": { "Crisp Bread": 7 }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "artache-intent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Artache Intent: write a game script once, export it to Ren'Py and RPG Maker MV.",
+  "type": "module",
+  "bin": {
+    "intent": "./src/cli.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "intent": "tsx src/cli.ts",
+    "examples": "tsx src/cli.ts examples/limout -o out/limout && tsx src/cli.ts examples/contraryquest -o out/contraryquest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "5.9",
+    "vitest": "3.2"
+  }
+}

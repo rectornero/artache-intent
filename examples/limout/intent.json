@@ -1,0 +1,37 @@
+{
+  "name": "Liminal Outliers",
+  "targets": ["renpy"],
+  "narrator": "MIRIAM",
+  "voiceAs": true,
+  "voices": { "hollow": "MIRIAM_HOLLOW" },
+  "doubleBrackets": "stain",
+  "quotedVoice": "VOICE",
+  "cast": {
+    "MIRIAM": { "id": "m", "image": "miriam", "color": "#c9b8e8", "aliases": ["M"],
+      "expressions": { "neutral": "neutra", "copying FREE": "copia_free" } },
+    "MIRIAM_HOLLOW": { "id": "mv", "display": "Miriam", "color": "#8a8a8a" },
+    "FREE": { "id": "f", "image": "free", "color": "#7fa7d9", "aliases": ["F"],
+      "expressions": { "neutral": "neutro", "scared": "spaventato" } },
+    "TONY": { "id": "t", "image": "tony", "color": "#d9a05b", "aliases": ["T"] },
+    "BRUNO": { "id": "b", "image": "bruno", "color": "#9c7b5b", "aliases": ["B"] },
+    "VOICE": { "id": "voce", "display": "???" }
+  },
+  "assets": {
+    "bg": { "stairwell": "tromba_scale" },
+    "cg": { "bruno body": "bruno_corpo" },
+    "music": { "guest": "ospite", "building": "palazzo" },
+    "sound": { "breath": "sfx_respiro" }
+  },
+  "blocks": {
+    "INVESTIGATE": { "renpyLabel": "minigame_investigate" },
+    "MIND": { "renpyLabel": "minigame_mind" },
+    "PRESENT": { "renpyLabel": "minigame_present" },
+    "DEBATE": { "renpyLabel": "minigame_debate" },
+    "GAME OVER": { "renpyLabel": "game_over" },
+    "DRAFT": { "export": false }
+  },
+  "renpy": {
+    "voiceAsId": "{speaker}_come_{as}",
+    "memory": { "met": "$ incontra(\"{slug}\")" }
+  }
+}
