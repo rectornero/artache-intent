@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { DataBlock, Node, Scene } from "../src/core/ast.ts";
 import { AUTHORS_FILE } from "../src/core/authors.ts";
 import { CHECKS_FILE, readChecks, writeChecks } from "../src/core/checks.ts";
@@ -10,21 +10,12 @@ import { assetsFromMv, assetsFromRenpy } from "../src/core/assets.ts";
 import { detectMinigames, sheetFileName, sheetNames, sheetUsage, type SheetKind } from "../src/core/sheets.ts";
 import { inSync, markSynced, neighbours, pairOf, pairState, SYNC_FILE, versionFile, type Version } from "../src/core/sync.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
-import { AssetsPanel } from "./AssetsPanel.tsx";
-import { BackupsPanel } from "./BackupsPanel.tsx";
-import { ChecksPanel } from "./ChecksPanel.tsx";
-import { ConnectClaude } from "./ConnectClaude.tsx";
 import { Editor } from "./Editor.tsx";
-import { HandoffModal } from "./HandoffModal.tsx";
-import { HistoryPanel } from "./HistoryPanel.tsx";
 import { Icon } from "./Icon.tsx";
 import { LinkMenu, type LinkMenuAt } from "./LinkMenu.tsx";
 import { DiffReview, PopMenu, TogetherModal, type Pop, type PopItem, type Together } from "./Modals.tsx";
-import { MvView } from "./MvView.tsx";
 import { BookView, PreviewNodes } from "./Preview.tsx";
 import { LayerBar, SheetBar, SyncBar, VERSION_NAMES } from "./ScriptBars.tsx";
-import { SearchPanel } from "./SearchPanel.tsx";
-import { Settings } from "./Settings.tsx";
 import { SheetForm } from "./SheetForm.tsx";
 import { SidePanel, type Tab } from "./SidePanel.tsx";
 import { Sidebar } from "./Sidebar.tsx";
@@ -39,6 +30,17 @@ import { useFolderSync } from "./hooks/useFolderSync.ts";
 import { useProjectIO } from "./hooks/useProjectIO.ts";
 import { firstScript, useProjects } from "./hooks/useProjects.ts";
 import { useToast } from "./hooks/useToast.ts";
+
+// Panels and dialogs load when first opened, so the first download is just the editor.
+const AssetsPanel = lazy(() => import("./AssetsPanel.tsx").then((m) => ({ default: m.AssetsPanel })));
+const BackupsPanel = lazy(() => import("./BackupsPanel.tsx").then((m) => ({ default: m.BackupsPanel })));
+const ChecksPanel = lazy(() => import("./ChecksPanel.tsx").then((m) => ({ default: m.ChecksPanel })));
+const ConnectClaude = lazy(() => import("./ConnectClaude.tsx").then((m) => ({ default: m.ConnectClaude })));
+const HandoffModal = lazy(() => import("./HandoffModal.tsx").then((m) => ({ default: m.HandoffModal })));
+const HistoryPanel = lazy(() => import("./HistoryPanel.tsx").then((m) => ({ default: m.HistoryPanel })));
+const MvView = lazy(() => import("./MvView.tsx").then((m) => ({ default: m.MvView })));
+const SearchPanel = lazy(() => import("./SearchPanel.tsx").then((m) => ({ default: m.SearchPanel })));
+const Settings = lazy(() => import("./Settings.tsx").then((m) => ({ default: m.Settings })));
 
 type MobileView = "files" | "write" | "preview";
 
@@ -449,7 +451,7 @@ export function App() {
 
       {prefs.sidePanel !== "hidden" && (
         <SidePanel tab={tab} setTab={setTab} sheetName={sheetOpen ? (ok?.sheets.find((x) => x.file === sheetOpen)?.sheet.name ?? "Sheet") : null}>
-          {panelBody()}
+          <Suspense fallback={null}>{panelBody()}</Suspense>
         </SidePanel>
       )}
 
@@ -461,6 +463,7 @@ export function App() {
         ))}
       </nav>
 
+      <Suspense fallback={null}>
       {popMenu && <PopMenu menu={popMenu} onClose={() => setPopMenu(null)} />}
       {menu && (
         <LinkMenu menu={menu} onClose={() => setMenu(null)} onOpenSheet={openSheet} onRename={fx.renameAny} onChangeKind={fx.changeKind} onCreate={fx.createSheet}
@@ -493,6 +496,7 @@ export function App() {
         <Settings prefs={prefs} setPrefs={setPrefs} theme={theme} apiKey={claude.apiKey} setApiKey={claude.setApiKey} model={claude.model} setModel={claude.setModel}
           via={claude.via} setVia={claude.setVia} onClose={() => setSettingsOpen(false)} />
       )}
+      </Suspense>
       {busy && <div className="busy" role="status"><span className="spinner" />{busy}</div>}
       {toast && (
         <div className="toast" role="status">

@@ -1,7 +1,10 @@
 // One file per project, for moving work between devices or keeping a copy
 // anywhere: a zip of the project's files plus intent.project.json.
 
-import JSZip from "jszip";
+import type JSZip from "jszip";
+
+// jszip loads on first use, so it stays out of the app's first download.
+const load = async () => (await import("jszip")).default;
 
 export const PACK_EXT = "intentproj";
 const META = "intent.project.json";
@@ -14,7 +17,7 @@ export interface PackMeta {
 }
 
 export async function pack(meta: PackMeta, files: Record<string, string>): Promise<Uint8Array> {
-  const zip = new JSZip();
+  const zip = new (await load())();
   zip.file(META, JSON.stringify(meta, null, 2));
   for (const [name, text] of Object.entries(files)) zip.file(name, text);
   return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
@@ -23,7 +26,7 @@ export async function pack(meta: PackMeta, files: Record<string, string>): Promi
 export async function unpack(data: ArrayBuffer | Uint8Array): Promise<{ meta: PackMeta; files: Record<string, string> }> {
   let zip: JSZip;
   try {
-    zip = await JSZip.loadAsync(data);
+    zip = await (await load()).loadAsync(data);
   } catch {
     throw new Error("This isn't an Intent project file.");
   }

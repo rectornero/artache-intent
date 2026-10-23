@@ -1,7 +1,6 @@
 // Projects live in the browser (or the app's webview) by default. On desktop and
 // Android the Tauri build can also open and save a real folder.
 
-import JSZip from "jszip";
 
 export interface Project {
   id: string;
@@ -197,6 +196,7 @@ export async function deliverExport(name: string, files: Record<string, string>)
     }
     return;
   }
+  const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
   for (const [path, text] of Object.entries(files)) zip.file(path, text);
   download(`${name.replace(/[^\w-]+/g, "-")}-export.zip`, await zip.generateAsync({ type: "blob" }));
