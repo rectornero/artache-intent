@@ -14,7 +14,11 @@ Private. Nothing here is public without Nero's yes.
       report / bible tabs, export (zip in a browser, folder in the app), four themes plus a
       custom theme with its own brand name, layout options, phone layout
 - [x] Tauri shell for Windows .exe and Android .apk (`cargo check` passes)
-- [ ] First CI build of the .exe and .apk (`.github/workflows/build.yml`)
+- [x] CI builds the .exe and .apk on every push to `main` (`.github/workflows/build.yml`)
+- [x] 0.4: mystery kit (clue sheets, alibis, clue board), writer's toolbar, word count and
+      goals, spellcheck, manuscript export (Word and PDF), MV version per script, playtest
+      in Ren'Py (Windows app); see `docs/SPEC.md`
+- [ ] Before release: move the Claude API key out of localStorage
 - [ ] Before release: trademark check on "Artache" (TMview/WIPO, classes 9 and 41)
 
 ## Use
