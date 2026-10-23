@@ -166,6 +166,8 @@ export interface UiPrefs {
   showWriterBar: boolean;
   /** Word count and goals under the text. */
   showWordCount: boolean;
+  /** The device's spellcheck in Draft and Play: off, the device's language (""), or a language code. */
+  spellcheck: string | false;
 }
 
 export const DEFAULT_PREFS: UiPrefs = {
@@ -178,6 +180,7 @@ export const DEFAULT_PREFS: UiPrefs = {
   showAuthors: true,
   showWriterBar: true,
   showWordCount: true,
+  spellcheck: "",
 };
 
 export function activeTheme(p: UiPrefs): Theme {

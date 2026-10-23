@@ -18,6 +18,8 @@ interface Props {
   onChange: (v: string) => void;
   onCursorLine: (line: number) => void;
   jumpTo: { line: number; n: number } | null;
+  /** The device's spellcheck in this language ("" for the device's own), or off. */
+  spellcheck?: string | false;
   /** Text to put in at the cursor: inline, or as lines of its own (`block`). */
   insert?: Insertion | null;
   links?: LinkTarget[];
@@ -29,12 +31,15 @@ interface Props {
   onClaude?: (spans: { from: number; to: number }[], doc: string) => void;
 }
 
-export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, jumpTo, insert, links = [], onOpenLink, onContext, claude, onClaude }: Props) {
+export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, jumpTo, insert, spellcheck = false, links = [], onOpenLink, onContext, claude, onClaude }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const diags = useRef(diagnostics);
   const cb = useRef({ onChange, onCursorLine });
   const wrapComp = useRef(new Compartment());
+  const spellComp = useRef(new Compartment());
+  const spellAttrs = (on: string | false) =>
+    EditorView.contentAttributes.of(on === false || isJson ? { spellcheck: "false" } : { spellcheck: "true", autocorrect: "on", autocapitalize: "sentences", ...(on ? { lang: on } : {}) });
   const linkRef = useRef(links);
   const openRef = useRef(onOpenLink);
   diags.current = diagnostics;
@@ -58,6 +63,7 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           isJson ? json() : [intentLanguage(), layerStripes(), gapMarks(), claudeSpansField, intentLinter(() => diags.current), sheetLinks(() => linkRef.current, (t) => openRef.current?.(t))],
           wrapComp.current.of(wrap ? EditorView.lineWrapping : []),
+          spellComp.current.of(spellAttrs(spellcheck)),
           EditorView.domEventHandlers({
             contextmenu(e, view) {
               if (!ctxRef.current || isJson) return false;
@@ -95,6 +101,11 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
   useEffect(() => {
     view.current?.dispatch({ effects: wrapComp.current.reconfigure(wrap ? EditorView.lineWrapping : []) });
   }, [wrap]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: spellComp.current.reconfigure(spellAttrs(spellcheck)) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spellcheck]);
 
   // Changes made outside the editor (convert, insert block) replace the text in place.
   useEffect(() => {

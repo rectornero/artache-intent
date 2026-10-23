@@ -456,6 +456,7 @@ export function App() {
             onCursorLine={setCursorLine}
             jumpTo={jump}
             insert={insertion}
+            spellcheck={isScript && layer !== "renpy" ? (prefs.spellcheck ?? "") : false}
             links={links}
             claude={claudeShown}
             onClaude={isScript && layer === "draft" ? ai.onClaudeSpans : undefined}

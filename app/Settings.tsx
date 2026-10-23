@@ -2,6 +2,8 @@ import { useState } from "react";
 import { CLAUDE_MODELS, type ClaudeModel, type ClaudeVia } from "./claude.ts";
 import { THEMES, type Theme, type UiPrefs } from "./themes.ts";
 
+const SPELL_LANGS = [["en-GB", "English (UK)"], ["en-US", "English (US)"], ["it", "Italian"], ["es", "Spanish"], ["fr", "French"], ["de", "German"], ["pt", "Portuguese"]];
+
 export function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, setModel, via, setVia, onClose }: { prefs: UiPrefs; setPrefs: (p: UiPrefs) => void; theme: Theme; apiKey: string; setApiKey: (k: string) => void; model: ClaudeModel; setModel: (m: ClaudeModel) => void; via: ClaudeVia; setVia: (v: ClaudeVia) => void; onClose: () => void }) {
   const [keyDraft, setKeyDraft] = useState("");
   const custom: Theme = prefs.custom ?? { ...structuredClone(theme), id: "custom", label: "Custom" };
@@ -56,6 +58,13 @@ export function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, set
           <label title="In the Draft, text Claude wrote shows in Claude's colour until you edit it">Show who wrote what<input type="checkbox" checked={prefs.showAuthors !== false} onChange={(e) => setPrefs({ ...prefs, showAuthors: e.target.checked })} /></label>
           <label title="Buttons above Draft and Play that insert characters, places, items, clues, minigames and interactions">Writer's toolbar<input type="checkbox" checked={prefs.showWriterBar !== false} onChange={(e) => setPrefs({ ...prefs, showWriterBar: e.target.checked })} /></label>
           <label title="Words in this version, the project and today, with your goals">Word count<input type="checkbox" checked={prefs.showWordCount !== false} onChange={(e) => setPrefs({ ...prefs, showWordCount: e.target.checked })} /></label>
+          <label title="Underlines misspelt words in the Draft and Play, using this device's dictionaries">Spellcheck
+            <select value={prefs.spellcheck === false ? "off" : prefs.spellcheck ?? ""} onChange={(e) => setPrefs({ ...prefs, spellcheck: e.target.value === "off" ? false : e.target.value })}>
+              <option value="off">Off</option>
+              <option value="">Device language</option>
+              {SPELL_LANGS.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+            </select>
+          </label>
           <label>Wrap long lines<input type="checkbox" checked={prefs.wrap} onChange={(e) => setPrefs({ ...prefs, wrap: e.target.checked })} /></label>
         </div>
         <h3>Claude</h3>
