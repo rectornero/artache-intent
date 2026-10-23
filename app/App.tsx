@@ -32,7 +32,10 @@ import { deliverExport, whenSaveFails, isPhone, isTauri, playtestRenpy, saveBina
 import { activeTheme, applyTheme, DEFAULT_PREFS, TEXT_SIZES, type UiPrefs } from "./themes.ts";
 import type { LinkTarget } from "./intentMode.ts";
 import { useBackups } from "./hooks/useBackups.ts";
-import { useClaude } from "./hooks/useClaude.ts";
+import { CANCELLED, useClaude } from "./hooks/useClaude.ts";
+import { explainFailure, opinionJob } from "./claude.ts";
+import { OpinionModal, type OpinionState } from "./OpinionModal.tsx";
+import { lineOfQuote, opinionPart } from "../src/core/opinion.ts";
 import { claudeIn, useClaudeActions } from "./hooks/useClaudeActions.ts";
 import { useFileActions } from "./hooks/useFileActions.ts";
 import { useFolderSync } from "./hooks/useFolderSync.ts";
@@ -93,6 +96,8 @@ export function App() {
   const [connectOpen, setConnectOpen] = useState(false);
   const [popMenu, setPopMenu] = useState<Pop | null>(null);
   const [together, setTogether] = useState<Together | null>(null);
+  const [opinion, setOpinion] = useState<OpinionState | null>(null);
+  const [selection, setSelection] = useState("");
   const [goalsOpen, setGoalsOpen] = useState(false);
   const pop = (e: React.MouseEvent, items: PopItem[]) => {
     e.stopPropagation();
@@ -226,7 +231,7 @@ export function App() {
     setTab("sheet");
     setMobile("preview");
   };
-  const fx = useFileActions({ project, file, ok, cursorLine, sheetFile, setFiles, say, bumpHistory, setFileName, setSheetFile, openSheet });
+  const fx = useFileActions({ project, file, ok, cursorLine, sheetFile, setFiles, say, bumpHistory, setFileName, setSheetFile, openSheet, setLayer });
   const { setFile } = fx;
   const dismissIssue = (issueId: string, on: boolean) => {
     const c = readChecks(project.files);
@@ -310,6 +315,23 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
+  // ✦ Opinion: Claude reads a part of the version on screen. Nothing in the text changes.
+  const askOpinion = async (o: OpinionState) => {
+    if (!ok || !isScript) return;
+    const whole = project.files[shown] ?? "";
+    const part = opinionPart(whole, o.scope, cursorLine, selection);
+    if (!part.text.trim()) return say("There's nothing to read there yet.");
+    const name = { selection: "the selected text", scene: "this scene", chapter: "this chapter", script: `the whole of ${file}` }[part.scope];
+    const label = `${name}${part.title ? `: ${part.title}` : ""}`;
+    setOpinion({ ...o, busy: true });
+    try {
+      const result = await claude.askClaude(opinionJob({ file, version: shownLayer, part: part.text, label, whole, ask: o.ask }, ok.config, ok.sheets.map((x) => x.sheet)));
+      setOpinion((now) => (now ? { ...now, busy: false, result, label } : now));
+    } catch (e) {
+      setOpinion((now) => (now ? { ...now, busy: false } : now));
+      if (e !== CANCELLED) say(`Claude couldn't read it: ${explainFailure(e)}.`, 8000);
+    }
+  };
   const openAt = (f: string, line: number) => {
     const v = versionOf(f);
     setFileName(v ? versionFile(f.replace(/\.(draft|rpy|mv\.json)$/, ".intent"), "play") : f);
@@ -446,7 +468,15 @@ export function App() {
         ...(isTauri() ? [{ label: "Folder…", run: () => void io.openFolderProject() }] : []),
       ])}>Open ▾</button>
       <button className="side-btn" onClick={(e) => pop(e, [
-        ...(!file.endsWith(".json") ? [{ label: `This file as… (${file.split("/").pop()})`, run: () => void saveFileAs(file, project.files[file] ?? "").then((done) => done && say(`Saved ${file.split("/").pop()}`)) }] : []),
+        // A script saves each of its versions on its own (Draft, Play, Code…); anything else as itself.
+        // Code and MV not opened yet are written from Play on the spot.
+        ...(isScript ? versions.map(vFile) : file.endsWith(".json") ? [] : [file]).flatMap((f) => {
+          const name = f.split("/").pop();
+          const v = isScript ? versionOf(f) : null;
+          const text = () => project.files[f] ?? (v === "renpy" || v === "mv" ? compiledVersion(v, project.files[file] ?? "") : "");
+          if (project.files[f] === undefined && !(ok && (v === "renpy" || v === "mv"))) return [];
+          return [{ label: v ? `${VERSION_NAMES[v]} as… (${name})` : `This file as… (${name})`, run: () => void saveFileAs(f, text()).then((done) => done && say(`Saved ${name}`)) }];
+        }),
         { label: "Project file…", run: () => void io.saveAsProjectFile(project.files) },
         ...(isTauri() && !project.folder ? [{ label: "Keep in a folder…", run: () => void io.keepInFolder() }] : []),
       ])}>Save ▾</button>
@@ -576,7 +606,8 @@ export function App() {
         {file.endsWith(".sheet") && <SheetBar raw={rawSheet} setRaw={setRawSheet} />}
         {isScript && (
           <LayerBar versions={versions} layer={shownLayer} setLayer={setLayer} behind={behind} busy={!!busy} open={draftOpen}
-            onInsert={insertBlock} onTogether={(stretch) => setTogether({ stretch, direction: together?.direction ?? "" })} onUnfold={() => void ai.unfold()} />
+            onInsert={insertBlock} onTogether={(stretch) => setTogether({ stretch, direction: together?.direction ?? "" })} onUnfold={() => void ai.unfold()}
+            onOpinion={() => setOpinion({ scope: selection.trim() ? "selection" : "scene", ask: opinion?.ask ?? "" })} />
         )}
         {isScript && (shownLayer === "draft" || shownLayer === "play") && prefs.showWriterBar !== false && ok && (
           <WriterBar layer={shownLayer} sheets={ok.sheets.map((x) => x.sheet)} blocks={ok.config.blocks} pop={pop}
@@ -604,6 +635,7 @@ export function App() {
             diagnostics={shown === file ? diagnostics : []}
             onChange={(t) => edit(shown, t)}
             onCursorLine={setCursorLine}
+            onSelection={setSelection}
             jumpTo={jump}
             insert={insertion}
             numbers={!(isScript && shownLayer === "draft") || prefs.draftLineNumbers === true}
@@ -655,6 +687,11 @@ export function App() {
       {menu && (
         <LinkMenu menu={menu} onClose={() => setMenu(null)} onOpenSheet={openSheet} onRename={fx.renameAny} onChangeKind={fx.changeKind} onCreate={fx.createSheet}
           onPlainText={(text, quiet) => { fx.setNoLink(text, true); if (!quiet) say(`“${text}” is plain text now. Undo in Project settings (noLink).`); }} />
+      )}
+      {opinion && (
+        <OpinionModal value={opinion} hasSelection={!!selection.trim()} onChange={setOpinion} onClose={() => setOpinion(null)}
+          onJump={(q) => { const line = lineOfQuote(project.files[shown] ?? "", q); if (line) jumpTo(line); else say("That passage isn't in the text anymore."); return !!line; }}
+          onGo={() => void askOpinion(opinion)} />
       )}
       {together && (
         <TogetherModal value={together} onChange={setTogether} onClose={() => setTogether(null)}

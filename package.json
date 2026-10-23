@@ -1,6 +1,6 @@
 {
   "name": "artache-intent",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "codename": "Vellum",
   "private": true,
   "description": "Artache Intent Writer: write a game script at any level of detail, unfold it with Claude, export it to Ren'Py and RPG Maker MV.",

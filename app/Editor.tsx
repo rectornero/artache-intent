@@ -19,6 +19,8 @@ interface Props {
   diagnostics: Diagnostic[];
   onChange: (v: string) => void;
   onCursorLine: (line: number) => void;
+  /** The selected text ("" when nothing is selected). */
+  onSelection?: (text: string) => void;
   jumpTo: { line: number; n: number } | null;
   /** Line numbers in the margin. */
   numbers?: boolean;
@@ -43,11 +45,11 @@ interface Props {
   onLevelPick?: (at: { lineFrom: number; level: Level; chosen: boolean; x: number; y: number }) => void;
 }
 
-export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, jumpTo, insert, numbers = true, typewriter = false, formatted = false, format, links = [], onOpenLink, onContext, claude, onClaude, choices, onChoices, onLevelPick }: Props) {
+export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, onSelection, jumpTo, insert, numbers = true, typewriter = false, formatted = false, format, links = [], onOpenLink, onContext, claude, onClaude, choices, onChoices, onLevelPick }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const diags = useRef(diagnostics);
-  const cb = useRef({ onChange, onCursorLine });
+  const cb = useRef({ onChange, onCursorLine, onSelection });
   const wrapComp = useRef(new Compartment());
   const numComp = useRef(new Compartment());
   const typeComp = useRef(new Compartment());
@@ -59,7 +61,7 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
   const linkRef = useRef(links);
   const openRef = useRef(onOpenLink);
   diags.current = diagnostics;
-  cb.current = { onChange, onCursorLine };
+  cb.current = { onChange, onCursorLine, onSelection };
   linkRef.current = links;
   openRef.current = onOpenLink;
   const ctxRef = useRef(onContext);
@@ -117,6 +119,7 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
             // A typed tag sets choices itself (an input with setChoices); a choice from the project doesn't come back.
             if (cs && cs !== u.startState.field(choicesField, false) && !u.transactions.some((tr) => tr.annotation(Transaction.remote) || (tr.effects.some((e) => e.is(setChoices)) && !tr.isUserEvent("input")))) choicesRef.current?.(cs, u.state.doc.toString());
             if (u.selectionSet || u.docChanged) cb.current.onCursorLine(u.state.doc.lineAt(u.state.selection.main.head).number);
+            if (u.selectionSet) { const sel = u.state.selection.main; cb.current.onSelection?.(sel.empty ? "" : u.state.sliceDoc(sel.from, sel.to)); }
           }),
         ],
       }),

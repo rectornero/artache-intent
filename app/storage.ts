@@ -124,7 +124,7 @@ export async function saveFileAs(name: string, text: string): Promise<boolean> {
     const { save } = await import("@tauri-apps/plugin-dialog");
     const fs = await import("@tauri-apps/plugin-fs");
     const ext = base.split(".").pop()!;
-    const path = await save({ defaultPath: base, filters: [{ name: ext === "sheet" ? "Intent sheet" : "Intent script", extensions: [ext] }] });
+    const path = await save({ defaultPath: base, filters: [{ name: ({ sheet: "Intent sheet", draft: "Intent draft", rpy: "Ren'Py script", json: "MV events" } as Record<string, string>)[ext] ?? "Intent script", extensions: [ext] }] });
     if (!path) return false;
     await fs.writeTextFile(path, text);
     return true;
@@ -154,7 +154,7 @@ export async function openFiles(): Promise<Record<string, string>> {
   if (isTauri()) {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const fs = await import("@tauri-apps/plugin-fs");
-    const picked = await open({ multiple: true, filters: [{ name: "Intent files", extensions: ["intent", "sheet"] }] });
+    const picked = await open({ multiple: true, filters: [{ name: "Intent files", extensions: ["intent", "draft", "sheet"] }] });
     for (const p of Array.isArray(picked) ? picked : picked ? [picked] : []) out[p.split(/[\\/]/).pop()!] = await fs.readTextFile(p);
     return out;
   }
@@ -162,7 +162,7 @@ export async function openFiles(): Promise<Record<string, string>> {
     const input = document.createElement("input");
     input.type = "file";
     input.multiple = true;
-    input.accept = ".intent,.sheet";
+    input.accept = ".intent,.draft,.sheet";
     input.onchange = async () => {
       for (const f of Array.from(input.files ?? [])) out[f.name] = await f.text();
       resolve(out);

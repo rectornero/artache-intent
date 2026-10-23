@@ -465,3 +465,69 @@ export function explainFailure(e: unknown): string {
   if (e instanceof TypeError) return "no connection";
   return (e instanceof Error ? e.message : String(e)).slice(0, 80);
 }
+
+// ✦ Opinion: an honest editor's read of a part of the script. Nothing in the text changes.
+
+export type Opinion = {
+  summary: string;
+  strengths: { point: string; quote: string }[];
+  weaknesses: { point: string; quote: string }[];
+  fixes: { quote: string; fix: string; why: string }[];
+};
+
+const OPINION_SYSTEM = `You are an experienced, honest and warm editor of fiction and game scripts. The writer asks for your opinion on one part of their work. Read it as a reader would, then as an editor.
+
+Give:
+- summary: two or three sentences, your overall impression, plain and specific to this text.
+- strengths: what works and why (voice, dialogue, pacing, tension, character, imagery, structure). Each with a short exact quote from the part (a few words) it shows in, or "" when it's about the whole.
+- weaknesses: what doesn't work yet and why, most important first. Each with a short exact quote, or "".
+- fixes: concrete changes the writer could make, most useful first. Each with a short exact quote of what to change, the fix (a rewrite of those words when that's the clearest way, or a short instruction), and why it helps.
+
+Be specific: name the line, the beat, the word. No generic advice, no flattery, no grammar nitpicks unless they hurt the reading. Judge only the part you're given; the rest of the script and the sheets are background. Respect the writer's style and intent: suggest, don't take over. If the writer asks about something in particular, answer that first. Keep each point to one or two sentences. Write in English.`;
+
+const OPINION_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    strengths: { type: "array", items: { type: "object", properties: { point: { type: "string" }, quote: { type: "string" } }, required: ["point", "quote"], additionalProperties: false } },
+    weaknesses: { type: "array", items: { type: "object", properties: { point: { type: "string" }, quote: { type: "string" } }, required: ["point", "quote"], additionalProperties: false } },
+    fixes: { type: "array", items: { type: "object", properties: { quote: { type: "string" }, fix: { type: "string" }, why: { type: "string" } }, required: ["quote", "fix", "why"], additionalProperties: false } },
+  },
+  required: ["summary", "strengths", "weaknesses", "fixes"],
+  additionalProperties: false,
+};
+
+function readOpinion(d: unknown): Opinion {
+  const o = (d ?? {}) as Partial<Opinion>;
+  const list = <T,>(x: unknown) => (Array.isArray(x) ? (x as T[]) : []);
+  return {
+    summary: String(o.summary ?? ""),
+    strengths: list<Opinion["strengths"][number]>(o.strengths).filter((s) => s?.point).map((s) => ({ point: s.point, quote: s.quote ?? "" })),
+    weaknesses: list<Opinion["weaknesses"][number]>(o.weaknesses).filter((s) => s?.point).map((s) => ({ point: s.point, quote: s.quote ?? "" })),
+    fixes: list<Opinion["fixes"][number]>(o.fixes).filter((f) => f?.fix).map((f) => ({ quote: f.quote ?? "", fix: f.fix, why: f.why ?? "" })),
+  };
+}
+
+/** Claude's opinion on `part` of the script `file` (in `version`), with the whole text as background. */
+export function opinionJob(o: { file: string; version: Version; part: string; label: string; whole: string; ask: string }, cfg: ProjectConfig, sheets: Sheet[]): Job<Opinion> {
+  return {
+    title: `Opinion on ${o.label}`,
+    system: OPINION_SYSTEM,
+    content: [
+      context(cfg, sheets),
+      o.part === o.whole ? "" : `The whole script ${o.file}, ${NAMES[o.version]}, as background:\n<script>\n${o.whole}\n</script>`,
+      `The part to give your opinion on (${o.label}, ${NAMES[o.version]}):\n<part>\n${o.part}\n</part>`,
+      o.ask.trim() ? `The writer asks: ${o.ask.trim()}` : "",
+    ].filter(Boolean).join("\n\n"),
+    schema: OPINION_SCHEMA,
+    effort: "medium",
+    maxTokens: 16000,
+    thinking: true,
+    read: readOpinion,
+    pasteAs: `JSON only, inside one fenced block (\`\`\`json … \`\`\`), shaped like:\n{"summary": "…", "strengths": [{"point": "…", "quote": "a few exact words"}], "weaknesses": [{"point": "…", "quote": "…"}], "fixes": [{"quote": "…", "fix": "…", "why": "…"}]}`,
+    readPasted: (a) => {
+      const text = fenced(a);
+      return readOpinion(JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)));
+    },
+  };
+}
