@@ -1,12 +1,11 @@
 // ✦ Unfold: the Draft at every level of detail, turned into its final form.
-// Fast and Medium passages are written out by Claude; Detailed text stays word
-// for word, except keywords or a sketch inside it; Requests are carried out and
-// stay the writer's.
+// Intent passages are written out by Claude; Written text stays word for word
+// (Claude reads it as context); Requests are carried out and stay the writer's.
 
 import { fillGapsAt, type Gap } from "./fill.ts";
 import { passages, toWrite, type Level, type Passage } from "./levels.ts";
 
-/** A story passage Claude reads and may write out. `note` is what stands there now. */
+/** An intent passage Claude writes out. `note` is what stands there now. */
 export interface Unit extends Gap {
   level: Level;
 }
@@ -14,9 +13,9 @@ export interface Unit extends Gap {
 export interface UnfoldPlan {
   units: Unit[];
   asks: Passage[];
-  /** Fast and Medium passages: what is surely left to write out. */
+  /** Intent passages and open requests: what is left to unfold. */
   open: number;
-  /** The Draft as Claude reads it: every passage and request marked, headings and comments as they are. */
+  /** The Draft as Claude reads it: every intent passage and request marked, the rest as it is. */
   marked: string;
 }
 
@@ -26,7 +25,7 @@ export function planUnfold(text: string, ps: Passage[] = passages(text)): Unfold
   const { story, asks, open } = toWrite(ps);
   const units: Unit[] = story.map((p) => ({ from: p.from, to: p.to, note: text.slice(p.from, p.to), level: p.level }));
   const marks = [
-    ...units.map((u, i) => ({ from: u.from, to: u.to, put: `<part n="${i + 1}" level="${u.level}">${esc(u.note)}</part>` })),
+    ...units.map((u, i) => ({ from: u.from, to: u.to, put: `<part n="${i + 1}">${esc(u.note)}</part>` })),
     ...asks.map((p, i) => ({ from: p.from, to: p.to, put: `<request n="${i + 1}">${esc(text.slice(p.from, p.to))}</request>` })),
   ].sort((a, b) => a.from - b.from);
   let marked = "";

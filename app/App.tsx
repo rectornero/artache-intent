@@ -4,7 +4,7 @@ import { AUTHORS_FILE } from "../src/core/authors.ts";
 import { CHECKS_FILE, readChecks, writeChecks } from "../src/core/checks.ts";
 import { conditionText } from "../src/core/condition.ts";
 import { retireNotes } from "../src/core/fill.ts";
-import { choicesIn, choose, LEVELS, LEVELS_FILE, passages, readLevels, storyOnly, toWrite, writeLevels, type Choice, type Level } from "../src/core/levels.ts";
+import { choicesIn, choose, LEVELS, LEVELS_FILE, passages, readLevels, storyOnly, taggedLevel, toWrite, writeLevels, type Choice, type Level } from "../src/core/levels.ts";
 import { saveSnapshot } from "./history.ts";
 import { toLayer } from "../src/core/layers.ts";
 import { mvVersionText } from "../src/core/mvVersion.ts";
@@ -12,10 +12,11 @@ import { parseScript, slug } from "../src/core/parser.ts";
 import { assetsFromMv, assetsFromRenpy } from "../src/core/assets.ts";
 import { clueBoard } from "../src/core/mystery.ts";
 import { manuscript, manuscriptWords, type ManuscriptOptions } from "../src/core/manuscript.ts";
-import { detectMinigames, sheetFileName, sheetNames, sheetUsage, type SheetKind } from "../src/core/sheets.ts";
+import { sheetNames, sheetUsage, type SheetKind } from "../src/core/sheets.ts";
 import { inSync, markSynced, neighbours, pairOf, pairState, SYNC_FILE, versionFile, versionOf, type Version } from "../src/core/sync.ts";
 import { compileProject, exportWithVersions, type CompileResult } from "../src/project.ts";
 import { Editor, type Insertion } from "./Editor.tsx";
+import type { Format } from "./format.ts";
 import { Icon } from "./Icon.tsx";
 import { LinkMenu, type LinkMenuAt } from "./LinkMenu.tsx";
 import { DiffReview, PopMenu, TogetherModal, type Pop, type PopItem, type Together } from "./Modals.tsx";
@@ -28,7 +29,7 @@ import { WriterBar } from "./WriterBar.tsx";
 import { GoalsModal, useTodayWords, WordBar } from "./WordBar.tsx";
 import { countWords, playWords, projectWords, readGoals, writeGoals } from "../src/core/words.ts";
 import { deliverExport, whenSaveFails, isPhone, isTauri, playtestRenpy, saveBinaryAs, launchFile, launchProject, loadPrefs, openFiles, savePrefs, saveFileAs, type Project } from "./storage.ts";
-import { activeTheme, applyTheme, DEFAULT_PREFS, type UiPrefs } from "./themes.ts";
+import { activeTheme, applyTheme, DEFAULT_PREFS, TEXT_SIZES, type UiPrefs } from "./themes.ts";
 import type { LinkTarget } from "./intentMode.ts";
 import { useBackups } from "./hooks/useBackups.ts";
 import { useClaude } from "./hooks/useClaude.ts";
@@ -76,6 +77,9 @@ export function App() {
   const [jump, setJump] = useState<{ line: number; n: number } | null>(null);
   const jumpTo = (line: number) => setJump({ line, n: Date.now() });
   const [insertion, setInsertion] = useState<Insertion | null>(null);
+  const [formatCmd, setFormatCmd] = useState<{ kind: Format; n: number } | null>(null);
+  // Focus: only the page, nothing else on screen.
+  const [focusMode, setFocusMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobile, setMobile] = useState<MobileView>("write");
   const [sheetFile, setSheetFile] = useState<string | null>(null);
@@ -182,13 +186,14 @@ export function App() {
     });
   };
   const pickLevel = (at: { lineFrom: number; level: Level; chosen: boolean; x: number; y: number }) => {
-    const set = (level: Level | null) => saveChoices(choose(draftChoices, draftText, at.lineFrom, { level }), draftText);
+    const line = draftText.slice(at.lineFrom, (draftText.indexOf("\n", at.lineFrom) + 1 || draftText.length + 1) - 1);
+    // Written is what an untagged line already is: choosing it on such a line just clears the choice.
+    const set = (level: Level) => saveChoices(choose(draftChoices, draftText, at.lineFrom, { level: level === taggedLevel(line) ? null : level }), draftText);
     const item = (l: Level, label: string) => ({ label: `${at.level === l ? "✓ " : ""}${label}`, run: () => set(l) });
     setPopMenu({ x: at.x, y: at.y, items: [
-      item("written", "Keep as written"),
-      item("intent", `${LEVELS.intent.label}: write it out`),
+      item("written", `${LEVELS.written.label}: keep it as it is`),
+      item("intent", `${LEVELS.intent.label}: Claude writes it out`),
       item("request", `${LEVELS.request.label}: an ask for Claude`),
-      ...(at.chosen ? [{ label: "Let the rules decide", run: () => set(null) }] : []),
     ] });
   };
   // {{ notes }} are retired: an old one becomes a line of its own the first time its Draft opens.
@@ -201,7 +206,7 @@ export function App() {
     saveSnapshot(project.id, draftFile, before, "Before {{ notes }} became lines");
     bumpHistory();
     setFiles(project.id, (now) => (now[draftFile] === before ? { ...now, [draftFile]: after } : now));
-    say("Your {{ notes }} are lines of their own now: ✦ Unfold writes them out. The text before is in History.", 9000);
+    say("Your {{ notes }} are intent lines now (starting with \\): ✦ Unfold writes them out. The text before is in History.", 9000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isScript, layer, draftFile, project.id]);
 
@@ -238,28 +243,42 @@ export function App() {
     }
   }, [project.files]);
 
-  // Every name that has a sheet, plus minigames the scripts mention that have none yet.
+  // The names of the sheets the writer made. Nothing is guessed from the text.
   const links = useMemo<LinkTarget[]>(() => {
     if (!ok) return [];
-    const out: LinkTarget[] = ok.sheets.flatMap(({ file: f, sheet }) => sheetNames(sheet).map((name) => ({ name, kind: sheet.kind, file: f })));
-    const have = new Set(ok.sheets.filter((x) => x.sheet.kind === "minigame").map((x) => x.sheet.name.toLowerCase()));
-    const seen = new Set<string>();
-    for (const [f, text] of Object.entries(project.files)) {
-      if (!f.endsWith(".intent")) continue;
-      for (const g of detectMinigames(text)) {
-        if (have.has(g.toLowerCase()) || seen.has(g.toLowerCase())) continue;
-        seen.add(g.toLowerCase());
-        out.push({ name: g, kind: "minigame", file: sheetFileName("minigame", g), stub: true });
-      }
-    }
-    return out.filter((l) => !noLink.has(l.name.toLowerCase()));
-  }, [ok, project.files, noLink]);
+    return ok.sheets.flatMap(({ file: f, sheet }) => sheetNames(sheet).map((name) => ({ name, kind: sheet.kind, file: f }))).filter((l) => !noLink.has(l.name.toLowerCase()));
+  }, [ok, noLink]);
 
   const sheetUsageFor = (f: string) => {
     const entry = ok?.sheets.find((x) => x.file === f);
     return entry && ok ? sheetUsage(entry.sheet, ok.scripts) : null;
   };
   const openLink = (t: LinkTarget) => (t.stub ? fx.createSheet(t.kind as SheetKind, t.name) : openSheet(t.file));
+
+  const textSize = (by: number) => setPrefs((p) => ({ ...p, editorSize: Math.min(TEXT_SIZES.max, Math.max(TEXT_SIZES.min, p.editorSize + by)) }));
+  const showFiles = prefs.showFiles !== false;
+  const togglePanel = () => setPrefs((p) => (p.sidePanel === "hidden" ? { ...p, sidePanel: p.panelLast ?? "right" } : { ...p, panelLast: p.sidePanel, sidePanel: "hidden" }));
+  // Dragging the edge of the files column or the panel: the size follows the pointer and is remembered.
+  const resize = (what: "files" | "panel") => (e: React.PointerEvent) => {
+    e.preventDefault();
+    const app = (e.currentTarget as HTMLElement).closest(".app")!.getBoundingClientRect();
+    const bottom = prefs.sidePanel === "bottom";
+    const move = (m: PointerEvent) => setPrefs((p) => what === "files"
+      ? { ...p, filesWidth: Math.round(Math.min(480, Math.max(160, m.clientX - app.left))) }
+      : { ...p, panelSize: Math.round(bottom ? Math.min(app.height - 200, Math.max(140, app.bottom - m.clientY)) : Math.min(app.width - 420, Math.max(280, app.right - m.clientX))) });
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.classList.remove("resizing");
+    };
+    document.body.classList.add("resizing");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const layoutVars = {
+    ...(!showFiles ? { "--files-w": "0px" } : prefs.filesWidth ? { "--files-w": `${prefs.filesWidth}px` } : {}),
+    ...(prefs.panelSize ? { "--panel-size": `${prefs.panelSize}px` } : {}),
+  } as React.CSSProperties;
 
   const openSearch = () => {
     setTab("search");
@@ -268,9 +287,19 @@ export function App() {
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "f") {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.shiftKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
         openSearch();
+      } else if (mod && e.key === ".") {
+        e.preventDefault();
+        setFocusMode((f) => !f);
+      } else if (e.key === "Escape" && focusMode && !document.querySelector(".modal-back, .pop-menu")) {
+        setFocusMode(false);
+      } else if (mod && !e.shiftKey && (e.key === "=" || e.key === "+" || e.key === "-")) {
+        // Bigger or smaller text, for tired eyes.
+        e.preventDefault();
+        textSize(e.key === "-" ? -1 : 1);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -475,7 +504,7 @@ export function App() {
   };
 
   return (
-    <div className={`app side-${prefs.sidePanel} ${prefs.showOutline ? "" : "no-outline"} ${prefs.showAuthors === false ? "no-authors" : ""} ${prefs.showLevels === false ? "no-levels" : ""} m-${mobile}`}>
+    <div style={layoutVars} className={`app side-${prefs.sidePanel} ${showFiles ? "" : "no-files"} ${focusMode ? "focus" : ""} ${prefs.showOutline ? "" : "no-outline"} ${prefs.showAuthors === false ? "no-authors" : ""} ${prefs.showLevels === false ? "no-levels" : ""} m-${mobile}`}>
       <header className="topbar">
         <div className="brand" title={`${theme.brand.name} ${theme.brand.product}`}>
           <img className="brand-logo" src={theme.brand.logo} alt={theme.brand.name} />
@@ -490,6 +519,17 @@ export function App() {
           ))}
         </select>
         <div className="spacer" />
+        <div className="view-toggles wide-only" role="group" aria-label="What you see">
+          <button className={`icon ${showFiles ? "on" : ""}`} onClick={() => setPrefs((p) => ({ ...p, showFiles: !showFiles }))} aria-pressed={showFiles} aria-label="Files column" title={showFiles ? "Hide the files column" : "Show the files column"}>
+            <Icon name="files" size={17} />
+          </button>
+          <button className={`icon ${prefs.sidePanel !== "hidden" ? "on" : ""}`} onClick={togglePanel} aria-pressed={prefs.sidePanel !== "hidden"} aria-label="Panel" title={prefs.sidePanel !== "hidden" ? "Hide the panel" : "Show the panel"}>
+            <Icon name="story" size={17} />
+          </button>
+          <button className="icon" onClick={() => setFocusMode(true)} aria-label="Focus" title="Focus: only the page (Ctrl+. · Esc to leave)" data-testid="focus">
+            <Icon name="focus" size={17} />
+          </button>
+        </div>
         <span className={`status ${errors ? "bad" : warnings ? "warn" : "good"}`} data-testid="status">
           {"error" in result ? "Settings error" : errors ? `${errors} error${errors > 1 ? "s" : ""}` : warnings ? `${warnings} warning${warnings > 1 ? "s" : ""}` : "Ready"}
         </span>
@@ -504,6 +544,7 @@ export function App() {
           {moreOpen && (
             <div className="more-menu" role="menu" onClick={() => setMoreOpen(false)}>
               <button role="menuitem" onClick={doExport}>Export</button>
+              <button role="menuitem" onClick={() => { setMobile("write"); setFocusMode(true); }}>Focus: only the page</button>
               <button role="menuitem" onClick={() => setSettingsOpen(true)}>Settings</button>
               <span className="more-version">{theme.brand.product} {__APP_VERSION__}</span>
             </div>
@@ -511,6 +552,7 @@ export function App() {
         </div>
       </header>
 
+      {showFiles && <div className="resizer resizer-files wide-only" onPointerDown={resize("files")} onDoubleClick={() => setPrefs((p) => ({ ...p, filesWidth: undefined }))} title="Drag to resize · double-click to reset" />}
       <Sidebar
         project={project} file={file} sheetFile={sheetFile} sheets={ok?.sheets ?? []} links={links} outline={prefs.showOutline ? outline : null}
         onOpen={(f) => { setFileName(f); setMobile("write"); }}
@@ -529,7 +571,7 @@ export function App() {
         )}
         {isScript && (shownLayer === "draft" || shownLayer === "play") && prefs.showWriterBar !== false && ok && (
           <WriterBar layer={shownLayer} sheets={ok.sheets.map((x) => x.sheet)} blocks={ok.config.blocks} pop={pop}
-            onInsert={(s) => setInsertion({ ...s, n: Date.now() })} onNewSheet={(k, n) => fx.createSheet(k, n, false)} />
+            onInsert={(s) => setInsertion({ ...s, n: Date.now() })} onFormat={(kind) => setFormatCmd({ kind, n: Date.now() })} onNewSheet={(k, n) => fx.createSheet(k, n, false)} />
         )}
         {isScript && <SyncBar layer={shownLayer} states={states} busy={!!busy} onMarkInStep={markInStep} onSync={(from, to) => void ai.syncVersions(from, to)} />}
         {file.endsWith(".sheet") && !rawSheet ? (
@@ -555,8 +597,11 @@ export function App() {
             onCursorLine={setCursorLine}
             jumpTo={jump}
             insert={insertion}
-            spellcheck={isScript && (shownLayer === "draft" || shownLayer === "play") ? (prefs.spellcheck ?? "") : false}
-            links={links}
+            numbers={!(isScript && shownLayer === "draft") || prefs.draftLineNumbers === true}
+            typewriter={prefs.typewriter !== false && isScript && (shownLayer === "draft" || shownLayer === "play")}
+            formatted={isScript && shownLayer === "draft"}
+            format={formatCmd}
+            links={prefs.highlightNames === false ? [] : links}
             claude={claudeShown}
             onClaude={isScript && layer === "draft" ? ai.onClaudeSpans : undefined}
             choices={isScript && layer === "draft" ? draftChoices : undefined}
@@ -581,8 +626,9 @@ export function App() {
         )}
       </main>
 
+      {prefs.sidePanel !== "hidden" && <div className={`resizer resizer-panel wide-only ${prefs.sidePanel}`} onPointerDown={resize("panel")} onDoubleClick={() => setPrefs((p) => ({ ...p, panelSize: undefined }))} title="Drag to resize · double-click to reset" />}
       {prefs.sidePanel !== "hidden" && (
-        <SidePanel tab={tab} setTab={setTab} sheetName={sheetOpen ? (ok?.sheets.find((x) => x.file === sheetOpen)?.sheet.name ?? "Sheet") : null}>
+        <SidePanel onClose={togglePanel} tab={tab} setTab={setTab} sheetName={sheetOpen ? (ok?.sheets.find((x) => x.file === sheetOpen)?.sheet.name ?? "Sheet") : null}>
           <Suspense fallback={null}>{panelBody()}</Suspense>
         </SidePanel>
       )}
@@ -641,6 +687,13 @@ export function App() {
           via={claude.via} setVia={claude.setVia} onClose={() => setSettingsOpen(false)} />
       )}
       </Suspense>
+      {focusMode && (
+        <div className="focus-tools" role="toolbar" aria-label="Focus">
+          <button onClick={() => textSize(-1)} aria-label="Smaller text" title="Smaller text (Ctrl+-)">A−</button>
+          <button onClick={() => textSize(1)} aria-label="Bigger text" title="Bigger text (Ctrl+=)">A+</button>
+          <button onClick={() => setFocusMode(false)} title="Leave focus (Esc)" data-testid="focus-leave">Leave focus</button>
+        </div>
+      )}
       {busy && <div className="busy" role="status"><span className="spinner" />{busy}</div>}
       {toast && (
         <div className="toast" role="status">

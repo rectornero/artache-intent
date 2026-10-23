@@ -153,6 +153,21 @@ export const THEMES: Theme[] = [
   },
 ];
 
+/** Fonts the writer can pick for the text, bundled with the app so they work offline. */
+export const WRITING_FONTS: Array<{ id: string; label: string; css: string }> = [
+  { id: "theme", label: "The theme's font", css: "" },
+  { id: "fraunces", label: "Fraunces: elegant serif", css: FONTS.display },
+  { id: "literata", label: "Literata: made for long reading", css: "'Literata Variable', 'Literata', Georgia, serif" },
+  { id: "lora", label: "Lora: warm and classic", css: "'Lora Variable', 'Lora', Georgia, serif" },
+  { id: "nunito", label: "Nunito: soft and rounded", css: "'Nunito Variable', 'Nunito', system-ui, sans-serif" },
+  { id: "inter", label: "Inter: clean and modern", css: FONTS.ui },
+  { id: "atkinson", label: "Atkinson Hyperlegible: easy on tired eyes", css: "'Atkinson Hyperlegible', system-ui, sans-serif" },
+  { id: "courier", label: "Courier Prime: typewriter", css: "'Courier Prime', 'Courier New', monospace" },
+  { id: "mono", label: "JetBrains Mono: code-like", css: FONTS.editor },
+];
+
+export const TEXT_SIZES = { min: 12, max: 40 };
+
 export interface UiPrefs {
   themeId: string;
   custom: Theme | null;
@@ -162,7 +177,7 @@ export interface UiPrefs {
   wrap: boolean;
   /** Draft: Claude's writing in its own colour. */
   showAuthors: boolean;
-  /** Draft: each line's level of detail (Fast, Medium, Detailed, Request) in the text and on its edge. */
+  /** Draft: each line's level (Intent, Written, Request) in the text and on its edge. */
   showLevels?: boolean;
   /** ✦ Unfold: a short writing tip drawn from your own text. */
   showTips?: boolean;
@@ -170,8 +185,21 @@ export interface UiPrefs {
   showWriterBar: boolean;
   /** Word count and goals under the text. */
   showWordCount: boolean;
-  /** The device's spellcheck in Draft and Play: off, the device's language (""), or a language code. */
-  spellcheck: string | false;
+  /** Names of the sheets you made, highlighted in the text (a click opens the sheet). */
+  highlightNames?: boolean;
+  /** Line numbers in the Draft (Play always has them: errors point at lines). */
+  draftLineNumbers?: boolean;
+  /** The line you write on stays in the middle of the screen. */
+  typewriter?: boolean;
+  /** Font for the Draft (story) and for Play (script), from WRITING_FONTS. */
+  storyFont?: string;
+  scriptFont?: string;
+  /** The files column: shown, and its width in px. */
+  showFiles?: boolean;
+  filesWidth?: number;
+  /** The output panel's width (right) or height (bottom) in px, and where it goes when shown again. */
+  panelSize?: number;
+  panelLast?: "right" | "bottom";
 }
 
 export const DEFAULT_PREFS: UiPrefs = {
@@ -184,7 +212,12 @@ export const DEFAULT_PREFS: UiPrefs = {
   showAuthors: true,
   showWriterBar: true,
   showWordCount: true,
-  spellcheck: "",
+  highlightNames: true,
+  draftLineNumbers: false,
+  typewriter: true,
+  storyFont: "theme",
+  scriptFont: "theme",
+  showFiles: true,
 };
 
 export function activeTheme(p: UiPrefs): Theme {
@@ -199,7 +232,10 @@ export function applyTheme(t: Theme, p: UiPrefs) {
   r.setProperty("--font-display", t.fonts.display);
   r.setProperty("--font-editor", t.fonts.editor);
   r.setProperty("--font-preview", t.fonts.preview);
-  r.setProperty("--editor-size", `${p.editorSize}px`);
+  r.setProperty("--editor-size", `${Math.min(TEXT_SIZES.max, Math.max(TEXT_SIZES.min, p.editorSize))}px`);
+  const font = (id: string | undefined, fallback: string) => WRITING_FONTS.find((f) => f.id === id && f.css)?.css ?? fallback;
+  r.setProperty("--font-story", font(p.storyFont, t.fonts.preview));
+  r.setProperty("--font-script", font(p.scriptFont, t.fonts.editor));
   document.documentElement.dataset.dark = String(t.dark);
   document.documentElement.style.colorScheme = t.dark ? "dark" : "light";
   document.title = `${t.brand.name} ${t.brand.product}`;

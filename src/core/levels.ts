@@ -1,9 +1,9 @@
 // Intent writing: a Draft written at whatever detail each moment deserves.
-// Every line is read on its own, by rules, with no Claude and nothing to format:
-// intent (keywords or a sketch of what happens, for Claude to write out), finished
-// text (Written, kept word for word), or a request to Claude (Request). The writer corrects a guess with a tap, or
-// starts a line with "\\ " (intent) or "/ " (request); that choice follows the line
-// and is kept in intent.levels.json with the line's place and text.
+// Every line is finished text (Written) unless the writer marks it: Intent (keywords
+// or a sketch, for Claude to write out) or Request (an ask for Claude). The writer marks
+// a line on its edge, with the toolbar, or by starting it with "\\ " (intent) or "/ "
+// (request). Nothing is guessed. A choice follows its line and is kept in
+// intent.levels.json with the line's place and text.
 
 export type Level = "intent" | "written" | "request";
 
@@ -20,7 +20,7 @@ export interface Passage {
   from: number;
   to: number;
   level: Level;
-  /** The writer chose it (true), or the rules guessed it. */
+  /** The writer chose it on the edge (true), or it comes from a tag or is plain Written. */
   chosen: boolean;
   /** A request Claude has already carried out. */
   done: boolean;
@@ -53,49 +53,19 @@ export function readLevels(files: Record<string, string>): Levels {
 // Headings, comments, fences and script lines a Draft made from Play still carries (as in words.ts).
 const NOT_STORY = /^\s*(#|\/\/|~\s|:::|>>|@|\+\s|!\s|TODO:)/;
 const DIVIDER = /^\s*([—–-]{1,3}|\*{3,}|_{3,})\s*$/;
-// A typed tag: "/ make it colder" (or "»", as in a chat note), or Claude named first.
-const ASK = /^(\/(?!\/)|»|@claude\b|claude\s*[,:])/i;
-// An ask at the start of a line: "I want…", "Make…", "Can you…" (English and Italian).
-const ASK_WORDS = /^(i want|i'd like|i would like|please|can you|could you|make|write|add|create|develop|build|design|describe|expand|rewrite|voglio|vorrei|per favore|puoi|potresti|fai|crea|scrivi|aggiungi|sviluppa|descrivi|riscrivi)\b/i;
-const DIALOGUE = /^(["“«‘]|[—–]\s*\S|[\p{Lu}][\p{L}\p{N}'’. -]{0,30}(?:,[^:"“«]{0,40})?:\s*["“«‘])/u;
-const ENDS = /[.!?…]["”»’)\]]*$/;
-// A sketch of what happens: "then", arrows, a length to aim for.
-const SKETCH = /(^|\s)(then|after that|meanwhile|poi|dopo|intanto|quindi)\s|->|→|=>/i;
-const LENGTH = /\(\s*(about|around|circa|~)?\s*\d[\d,.]*\s*(words?|lines?|pages?|parole|righe|pagine)\s*\)/i;
-// Words that glue a sentence together. Keywords have almost none.
-const GLUE = new Set(
-  ("a an the and or but if so of to in on at by for with from as into than that this these those it its is are was were be been am " +
-    "i you he she we they me him her us them my your his our their who what which when where while not no " +
-    "il lo la i gli le un uno una di del della dei delle da dal dalla in nel nella con su sul per tra fra e ed o ma se che " +
-    "non mi ti si ci vi lui lei noi voi loro io tu è sono era ho ha hanno al alla ai come mentre quando dove anche")
-    .split(" "),
-);
-const WORD = /[\p{L}\p{N}]+(?:['’][\p{L}]+)?/gu;
+// The writer's own tags at the start of a line: "\\ " intent, "/ " or "»" a request ("//" is a comment).
+const REQUEST_TAG = /^(\/(?!\/)|»)/;
+const INTENT_TAG = /^\\/;
 
-/** The rules' guess for one line of story (not a heading, comment or divider). */
-export function guessLevel(line: string): Level {
+/**
+ * A line's level from the writer's own tag, else Written. Nothing is guessed: a line
+ * is intent or a request only when the writer said so, with a tag or on its edge.
+ */
+export function taggedLevel(line: string): Level {
   const t = line.trim();
-  if (ASK.test(t) || ASK_WORDS.test(t)) return "request";
-  if (t.startsWith("\\")) return "intent";
-  if (DIALOGUE.test(t)) return "written";
-  const words = (t.match(WORD) ?? []).map((w) => w.toLowerCase());
-  if (!words.length) return "written";
-  const glue = words.filter((w) => GLUE.has(w) || GLUE.has(w.replace(/['’].*$/, ""))).length / words.length;
-  const chunks = t.split(/[,;]+|[.!?…]+(?=\s|$)/).map((c) => (c.match(WORD) ?? []).length).filter((n) => n > 0);
-  const chunkWords = words.length / Math.max(chunks.length, 1);
-  const first = t.match(/\p{L}/u)?.[0] ?? "";
-  const cap = first !== "" && first === first.toUpperCase() && first !== first.toLowerCase();
-  const ends = ENDS.test(t);
-  // A length to aim for means "write this out".
-  if (LENGTH.test(t)) return "intent";
-  // Keywords: short bits with little glue, like "museum, cats, peaceful sky" or "Rain. Door. Silence."
-  // A line that starts and ends like a sentence needs to be really telegraphic to count.
-  const keywords = cap && ends ? chunkWords <= 2 && glue < 0.25 : glue < 0.2 || (chunkWords <= 2.5 && glue < 0.25);
-  if (words.length >= 2 && keywords) return "intent";
-  // A sketch of what happens: "then", arrows.
-  if (SKETCH.test(t)) return "intent";
-  // Finished text starts with a capital and ends like a sentence.
-  return cap && ends ? "written" : "intent";
+  if (REQUEST_TAG.test(t)) return "request";
+  if (INTENT_TAG.test(t)) return "intent";
+  return "written";
 }
 
 /** Lines that carry no level: blank, headings, comments, dividers. */
@@ -117,7 +87,7 @@ export function choicesIn(text: string, stored: Stored[] = []): Choice[] {
   return out;
 }
 
-/** `choices` with the line starting at `lineFrom` changed (`level: null` hands it back to the rules). */
+/** `choices` with the line starting at `lineFrom` changed (`level: null` clears the choice). */
 export function choose(choices: Choice[], text: string, lineFrom: number, change: { level?: Level | null; done?: boolean }): Choice[] {
   const from = text.lastIndexOf("\n", lineFrom - 1) + 1;
   const end = text.indexOf("\n", from);
@@ -142,7 +112,7 @@ export function writeLevels(files: Record<string, string>, file: string, text: s
   return Object.keys(all).length ? JSON.stringify(all, null, 1) + "\n" : undefined;
 }
 
-/** The Draft's passages: each line's level (the writer's choice, else the rules' guess), neighbours at one level joined. */
+/** The Draft's passages: each line's level (the writer's choice, else its tag, else Written), neighbours at one level joined. */
 export function passages(text: string, choices: Choice[] = []): Passage[] {
   const out: Passage[] = [];
   let at = 0;
@@ -160,7 +130,7 @@ export function passages(text: string, choices: Choice[] = []): Passage[] {
     const ask = open || t.startsWith("»");
     if (t.startsWith("»")) open = !/».*»/.test(t);
     else if (open && t.includes("»")) open = false;
-    const level: Level = mine?.level ?? (ask ? "request" : guessLevel(line));
+    const level: Level = mine?.level ?? (ask ? "request" : taggedLevel(line));
     const chosen = !!mine?.level;
     const done = !!mine?.done;
     const last = out[out.length - 1];
@@ -174,14 +144,11 @@ export function passages(text: string, choices: Choice[] = []): Passage[] {
   return out;
 }
 
-/**
- * What ✦ Unfold has to do: story passages (intent to write out; written text to keep, though keywords Claude
- * finds inside it may be written out), and requests not yet carried out. Lines the writer chose to keep as written are left out.
- */
+/** What ✦ Unfold has to do: intent to write out, and requests not yet carried out. Written text is kept word for word. */
 export function toWrite(ps: Passage[]): { story: Passage[]; asks: Passage[]; open: number } {
-  const story = ps.filter((p) => p.level !== "request" && !(p.level === "written" && p.chosen));
+  const story = ps.filter((p) => p.level === "intent");
   const asks = ps.filter((p) => p.level === "request" && !p.done);
-  return { story, asks, open: story.filter((p) => p.level === "intent").length + asks.length };
+  return { story, asks, open: story.length + asks.length };
 }
 
 /** The start of every line in [from, to). */

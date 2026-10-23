@@ -53,10 +53,10 @@ export function WordBar({ projectId, here, hereLabel, total, written, goals, onG
   return (
     <div className="word-bar" data-testid="word-bar">
       {here !== null && <span title={`Words in this ${hereLabel}`}><b>{fmt(here)}</b> words in this {hereLabel}</span>}
-      <span title="Each script's Draft, or its Play where there is no Draft">
+      <span className="wb-project" title="Each script's Draft, or its Play where there is no Draft">
         Project <b>{fmt(total)}</b>{goals.words ? <> of {fmt(goals.words)}<Meter value={pct(total, goals.words)} /></> : ""}
       </span>
-      <span title="Words you typed today in this project, on this device">
+      <span className="wb-today" title="Words you typed today in this project, on this device">
         Today <b>{written >= 0 ? "+" : "−"}{fmt(Math.abs(written))}</b>{goals.daily ? <> of {fmt(goals.daily)}<Meter value={pct(Math.max(0, written), goals.daily)} /></> : ""}
       </span>
       <button className="ghost" onClick={onGoals} data-testid="goals">{goals.words || goals.daily ? "Goals" : "Set goals"}</button>

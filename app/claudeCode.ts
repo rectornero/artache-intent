@@ -21,7 +21,7 @@ The format is described in [INTENT_SPEC.md](INTENT_SPEC.md). Read it before edit
 - \`intent.json\`: project settings.
 - \`intent.sync.json\`: Intent's record of which versions are in step. **Never edit it.**
 - \`intent.checks.json\`: story check results (see below).
-- \`intent.levels.json\`: in each Draft, the lines the writer marked by hand as Intent (keywords or a sketch to write out), Written (keep word for word) or Request (an ask for you, never story). Other lines are judged by simple rules. Leave it alone.
+- \`intent.levels.json\`: in each Draft, the lines the writer marked by hand as Intent (keywords or a sketch to write out), Written (keep word for word) or Request (an ask for you, never story). Lines starting with "\\ " are Intent and lines starting with "/ " or "»" are Requests; every other line is Written. Leave it alone.
 
 ## Rules
 

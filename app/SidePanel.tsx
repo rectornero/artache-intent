@@ -12,7 +12,7 @@ const PANEL_GROUPS: Array<{ id: string; label: string; icon: string; tabs: Tab[]
 const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", search: "Find", checks: "Story check", clues: "Clues", manuscript: "Manuscript", backups: "Backups", assets: "Assets", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
 
 /** The right (or bottom) panel: group tabs, sub-tabs, and whatever the tab shows. */
-export function SidePanel({ tab, setTab, sheetName, children }: { tab: Tab; setTab: (t: Tab) => void; sheetName: string | null; children: React.ReactNode }) {
+export function SidePanel({ tab, setTab, sheetName, onClose, children }: { tab: Tab; setTab: (t: Tab) => void; sheetName: string | null; onClose?: () => void; children: React.ReactNode }) {
   return (
     <section className="panel">
       <nav className="tabs" role="tablist">
@@ -24,6 +24,7 @@ export function SidePanel({ tab, setTab, sheetName, children }: { tab: Tab; setT
             <Icon name={g.icon} size={14} />{g.label}
           </button>
         ))}
+        {onClose && <button className="panel-close wide-only" onClick={onClose} aria-label="Hide the panel" title="Hide the panel">✕</button>}
       </nav>
       {PANEL_GROUPS.filter((g) => g.tabs.includes(tab) && g.tabs.length > 1).map((g) => (
         <div key={g.id} className="subtabs" role="tablist">

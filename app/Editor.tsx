@@ -1,7 +1,8 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { forceLinting } from "@codemirror/lint";
 import { Compartment, EditorState, Transaction } from "@codemirror/state";
-import { EditorView, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
+import { EditorView, highlightActiveLine, keymap, lineNumbers, scrollPastEnd } from "@codemirror/view";
+import { applyFormat, formatting, type Format } from "./format.ts";
 import { json } from "./jsonMode.ts";
 import { useEffect, useRef } from "react";
 import type { Diagnostic } from "../src/core/ast.ts";
@@ -19,8 +20,14 @@ interface Props {
   onChange: (v: string) => void;
   onCursorLine: (line: number) => void;
   jumpTo: { line: number; n: number } | null;
-  /** The device's spellcheck in this language ("" for the device's own), or off. */
-  spellcheck?: string | false;
+  /** Line numbers in the margin. */
+  numbers?: boolean;
+  /** The line being written stays in the middle of the screen. */
+  typewriter?: boolean;
+  /** Draft only: **bold**, *italic*, titles, bullets and `code` shown as they read. */
+  formatted?: boolean;
+  /** A formatting command from the toolbar. */
+  format?: { kind: Format; n: number } | null;
   /** Text to put in at the cursor: inline, or as lines of its own (`block`). */
   insert?: Insertion | null;
   links?: LinkTarget[];
@@ -36,15 +43,19 @@ interface Props {
   onLevelPick?: (at: { lineFrom: number; level: Level; chosen: boolean; x: number; y: number }) => void;
 }
 
-export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, jumpTo, insert, spellcheck = false, links = [], onOpenLink, onContext, claude, onClaude, choices, onChoices, onLevelPick }: Props) {
+export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, jumpTo, insert, numbers = true, typewriter = false, formatted = false, format, links = [], onOpenLink, onContext, claude, onClaude, choices, onChoices, onLevelPick }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const diags = useRef(diagnostics);
   const cb = useRef({ onChange, onCursorLine });
   const wrapComp = useRef(new Compartment());
-  const spellComp = useRef(new Compartment());
-  const spellAttrs = (on: string | false) =>
-    EditorView.contentAttributes.of(on === false || isJson ? { spellcheck: "false" } : { spellcheck: "true", autocorrect: "on", autocapitalize: "sentences", ...(on ? { lang: on } : {}) });
+  const numComp = useRef(new Compartment());
+  const typeComp = useRef(new Compartment());
+  // Typing the writer's keys moves the page so the line stays centred; clicks and scrolling don't.
+  const centre = (on: boolean) => (on ? [scrollPastEnd(), EditorState.transactionExtender.of((tr) =>
+    (tr.docChanged || tr.selection) && (tr.isUserEvent("input") || tr.isUserEvent("delete") || tr.isUserEvent("move") || tr.isUserEvent("undo") || tr.isUserEvent("redo"))
+      ? { effects: EditorView.scrollIntoView(tr.newSelection.main.head, { y: "center" }) }
+      : null)] : []);
   const linkRef = useRef(links);
   const openRef = useRef(onOpenLink);
   diags.current = diagnostics;
@@ -60,6 +71,7 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
   const pickRef = useRef(onLevelPick);
   pickRef.current = onLevelPick;
   const withLevels = !!onLevelPick;
+  const withFormat = formatted && !isJson;
 
   useEffect(() => {
     const v = new EditorView({
@@ -67,13 +79,16 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
       state: EditorState.create({
         doc: value,
         extensions: [
-          lineNumbers(),
+          numComp.current.of(numbers ? lineNumbers() : []),
+          typeComp.current.of(centre(typewriter)),
           history(),
           highlightActiveLine(),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           isJson ? json() : [intentLanguage(), layerStripes(), withLevels ? [choicesField, intentLevels((at) => pickRef.current?.(at))] : [], claudeSpansField, intentLinter(() => diags.current), sheetLinks(() => linkRef.current, (t) => openRef.current?.(t))],
+          withFormat ? formatting() : [],
           wrapComp.current.of(wrap ? EditorView.lineWrapping : []),
-          spellComp.current.of(spellAttrs(spellcheck)),
+          // No spellcheck or autocorrect: nothing changes or marks the writer's words on its own.
+          EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off" }),
           EditorView.domEventHandlers({
             contextmenu(e, view) {
               if (!ctxRef.current || isJson) return false;
@@ -109,7 +124,7 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
     view.current = v;
     return () => v.destroy();
     // A new document gets a new editor; typing doesn't recreate it.
-  }, [docKey, isJson, withLevels]);
+  }, [docKey, isJson, withLevels, withFormat]);
 
 
   useEffect(() => {
@@ -117,9 +132,22 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
   }, [wrap]);
 
   useEffect(() => {
-    view.current?.dispatch({ effects: spellComp.current.reconfigure(spellAttrs(spellcheck)) });
+    view.current?.dispatch({ effects: numComp.current.reconfigure(numbers ? lineNumbers() : []) });
+  }, [numbers]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: typeComp.current.reconfigure(centre(typewriter)) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spellcheck]);
+  }, [typewriter]);
+
+  // The toolbar's formatting buttons: only new presses, like insert below.
+  const formattedN = useRef(format?.n);
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !format || format.n === formattedN.current) return;
+    formattedN.current = format.n;
+    applyFormat(v, format.kind);
+  }, [format]);
 
   // Changes made outside the editor (convert, insert block) replace the text in place.
   useEffect(() => {
