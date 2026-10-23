@@ -1,6 +1,9 @@
-# Artache Intent
+# Artache Intent Writer
 
-Write a game script once, in plain text, and export it to **Ren'Py** and **RPG Maker MV**.
+The writing program of the Artache **Intent** suite. Write a game script at whatever level of
+detail each moment deserves (keywords, a sketch, finished lines, requests to Claude, all in
+one sheet), press **✦ Unfold** to turn it into its final form, and export it to **Ren'Py** and
+**RPG Maker MV**.
 Intent grew out of LimOut Script (Liminal Outliers) and Quest Script (ContraryQuest);
 the format is in [docs/SPEC.md](docs/SPEC.md).
 
@@ -18,6 +21,10 @@ Private. Nothing here is public without Nero's yes.
 - [x] 0.4: mystery kit (clue sheets, alibis, clue board), writer's toolbar, word count and
       goals, spellcheck, manuscript export (Word and PDF), MV version per script, playtest
       in Ren'Py (Windows app); see `docs/SPEC.md`
+- [x] 0.5 "Origami": intent writing. Every Draft line is read by rules as Intent, Written or
+      Request; a tap on its edge (or typing `\ ` or `/ `) corrects it; ✦ Unfold writes intent
+      out, keeps written text, carries out requests (new sheets too) and ends with a writing
+      tip. `{{ notes }}` are retired. New name and icon. See `docs/SPEC.md`
 - [ ] Before release: move the Claude API key out of localStorage
 - [ ] Before release: trademark check on "Artache" (TMview/WIPO, classes 9 and 41)
 

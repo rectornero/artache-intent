@@ -39,7 +39,7 @@ export interface Theme {
 
 const ARTACHE: Brand = {
   name: "Artache",
-  product: "Intent",
+  product: "Intent Writer",
   tagline: "With AI. By People.",
   logo: "brand/artache-logo.png",
   icon: "brand/intent-icon.svg",
@@ -162,6 +162,10 @@ export interface UiPrefs {
   wrap: boolean;
   /** Draft: Claude's writing in its own colour. */
   showAuthors: boolean;
+  /** Draft: each line's level of detail (Fast, Medium, Detailed, Request) in the text and on its edge. */
+  showLevels?: boolean;
+  /** ✦ Unfold: a short writing tip drawn from your own text. */
+  showTips?: boolean;
   /** The writer's toolbar above Draft and Play. */
   showWriterBar: boolean;
   /** Word count and goals under the text. */

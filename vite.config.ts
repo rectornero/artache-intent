@@ -7,7 +7,7 @@ export default defineConfig({
   root: "app",
   base: "./",
   plugins: [react()],
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: { __APP_VERSION__: JSON.stringify(pkg.version), __APP_CODENAME__: JSON.stringify(pkg.codename ?? "") },
   build: {
     outDir: "../dist",
     emptyOutDir: true,

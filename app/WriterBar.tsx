@@ -34,6 +34,16 @@ export function WriterBar({ layer, sheets, blocks, pop, onInsert, onNewSheet }: 
           <Icon name={k} size={15} /><span>{SHEET_KINDS[k].label}</span>
         </button>
       ))}
+      {layer === "draft" && (
+        <>
+          <button className="writer-btn k-intent" onClick={() => onInsert({ text: "\\ ", block: true })} title="Explicit intent: write keywords or a sketch after it, and ✦ Unfold writes it out" data-testid="insert-intent">
+            <span className="tag-glyph">{"\\"}</span><span>Intent</span>
+          </button>
+          <button className="writer-btn k-request" onClick={() => onInsert({ text: "/ ", block: true })} title="A request for Claude: ✦ Unfold carries it out, and it never goes in the story" data-testid="insert-request">
+            <span className="tag-glyph">/</span><span>Request</span>
+          </button>
+        </>
+      )}
       {layer === "play" && (
         <button className="writer-btn" onClick={(e) => pop(e, interactions(blocks).map((i) => ({ label: i.label, run: () => onInsert({ text: i.text, block: true }) })))} title="Start a choice, condition, talk, event or one of the project's interaction blocks" data-testid="insert-interaction">
           <Icon name="design" size={15} /><span>Interaction</span>

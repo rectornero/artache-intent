@@ -1,36 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { fillGaps, findGaps, markGaps } from "../src/core/fill.ts";
+import { fillGapsAt, retireNotes } from "../src/core/fill.ts";
+import { claudeSpans, subtract, writeAuthors, readAuthors } from "../src/core/authors.ts";
 
-const draft = `Tony opens the door.\n\n{{ Tony and Limo argue about the alibi;\nLimo wins }}\n\n“Fine,” Tony says. {{ he leaves }} The end. {{   }}`;
-
-describe("draft gaps", () => {
-  it("finds notes, across lines, skipping empty braces", () => {
-    expect(findGaps(draft).map((g) => g.note)).toEqual(["Tony and Limo argue about the alibi; Limo wins", "he leaves"]);
+describe("old {{ notes }}", () => {
+  it("become lines of their own, across lines and mid-paragraph", () => {
+    const draft = `Tony opens the door.\n\n{{ Tony and Limo argue about the alibi;\nLimo wins }}\n\n“Fine,” Tony says. {{ he leaves }} The end. {{   }}`;
+    expect(retireNotes(draft)).toBe(`Tony opens the door.\n\nTony and Limo argue about the alibi; Limo wins\n\n“Fine,” Tony says.\nhe leaves\nThe end.`);
   });
-  it("fills each gap and keeps the writer's text", () => {
-    const gaps = findGaps(draft);
-    const out = fillGaps(draft, gaps, ["“You were there,” Tony says.", "He walks out."]);
-    expect(out).toBe(`Tony opens the door.\n\n“You were there,” Tony says.\n\n“Fine,” Tony says. He walks out. The end. {{   }}`);
-  });
-  it("keeps a note Claude left empty", () => {
-    const gaps = findGaps(draft);
-    expect(fillGaps(draft, gaps, ["Argument.", ""])).toContain("{{ he leaves }}");
-  });
-  it("numbers the gaps for Claude", () => {
-    expect(markGaps(draft, findGaps(draft))).toContain(`<write n="2">he leaves</write>`);
+  it("leave a Draft without notes alone", () => {
+    expect(retireNotes("Rain.  \nDoor.")).toBe("Rain.  \nDoor.");
   });
 });
-
-import { fillGapsAt } from "../src/core/fill.ts";
-import { claudeSpans, subtract, writeAuthors, readAuthors } from "../src/core/authors.ts";
 
 describe("who wrote what", () => {
   it("knows where the written parts landed, and moves later offsets", () => {
     const text = "A {{x}} B {{y}} C";
-    const r = fillGapsAt(text, findGaps(text), ["one", "two words"]);
+    const r = fillGapsAt(text, [{ from: 2, to: 7, note: "x" }, { from: 10, to: 15, note: "y" }], ["one", "two words"]);
     expect(r.text).toBe("A one B two words C");
     expect(r.written.map((w) => r.text.slice(w.from, w.to))).toEqual(["one", "two words"]);
     expect(r.text.slice(r.map(16))).toBe("C");
+  });
+  it("keeps what stood there when a fill is empty", () => {
+    expect(fillGapsAt("A x B", [{ from: 2, to: 3, note: "x" }], [""]).text).toBe("A x B");
   });
   it("finds Claude's stretches again after outside edits, and drops changed ones", () => {
     const text = "Mine. Claude's part. More mine. Another Claude part.";

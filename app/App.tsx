@@ -3,7 +3,9 @@ import type { DataBlock, Node, Scene } from "../src/core/ast.ts";
 import { AUTHORS_FILE } from "../src/core/authors.ts";
 import { CHECKS_FILE, readChecks, writeChecks } from "../src/core/checks.ts";
 import { conditionText } from "../src/core/condition.ts";
-import { findGaps } from "../src/core/fill.ts";
+import { retireNotes } from "../src/core/fill.ts";
+import { choicesIn, choose, LEVELS, LEVELS_FILE, passages, readLevels, storyOnly, toWrite, writeLevels, type Choice, type Level } from "../src/core/levels.ts";
+import { saveSnapshot } from "./history.ts";
 import { toLayer } from "../src/core/layers.ts";
 import { mvVersionText } from "../src/core/mvVersion.ts";
 import { parseScript, slug } from "../src/core/parser.ts";
@@ -162,6 +164,47 @@ export function App() {
   const claudeShown = useMemo(() => (isScript && layer === "draft" ? claudeIn(project.files, vFile("draft")) : undefined),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [isScript, layer, file, project.files[vFile("draft")], project.files[AUTHORS_FILE]]);
+  // Intent writing: the writer's choices of level for the Draft, and how much is left to unfold.
+  const draftFile = vFile("draft");
+  const draftText = project.files[draftFile] ?? "";
+  const draftChoices = useMemo(() => choicesIn(draftText, readLevels(project.files)[draftFile]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draftFile, draftText, project.files[LEVELS_FILE]]);
+  const draftOpen = useMemo(() => (isScript && layer === "draft" ? toWrite(passages(draftText, draftChoices)).open : 0), [isScript, layer, draftText, draftChoices]);
+  const saveChoices = (choices: Choice[], doc: string) => {
+    setFiles(project.id, (now) => {
+      if ((now[draftFile] ?? "") !== doc) return now;
+      const files = { ...now };
+      const json = writeLevels(files, draftFile, doc, choices);
+      if (json) files[LEVELS_FILE] = json;
+      else delete files[LEVELS_FILE];
+      return files;
+    });
+  };
+  const pickLevel = (at: { lineFrom: number; level: Level; chosen: boolean; x: number; y: number }) => {
+    const set = (level: Level | null) => saveChoices(choose(draftChoices, draftText, at.lineFrom, { level }), draftText);
+    const item = (l: Level, label: string) => ({ label: `${at.level === l ? "✓ " : ""}${label}`, run: () => set(l) });
+    setPopMenu({ x: at.x, y: at.y, items: [
+      item("written", "Keep as written"),
+      item("intent", `${LEVELS.intent.label}: write it out`),
+      item("request", `${LEVELS.request.label}: an ask for Claude`),
+      ...(at.chosen ? [{ label: "Let the rules decide", run: () => set(null) }] : []),
+    ] });
+  };
+  // {{ notes }} are retired: an old one becomes a line of its own the first time its Draft opens.
+  useEffect(() => {
+    if (!isScript || layer !== "draft") return;
+    const before = project.files[draftFile];
+    if (!before?.includes("{{")) return;
+    const after = retireNotes(before);
+    if (after === before) return;
+    saveSnapshot(project.id, draftFile, before, "Before {{ notes }} became lines");
+    bumpHistory();
+    setFiles(project.id, (now) => (now[draftFile] === before ? { ...now, [draftFile]: after } : now));
+    say("Your {{ notes }} are lines of their own now: ✦ Unfold writes them out. The text before is in History.", 9000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScript, layer, draftFile, project.id]);
+
   // The writer (or Claude Code) already brought the versions in step by hand.
   const markInStep = () => {
     let files = { ...project.files };
@@ -329,7 +372,9 @@ export function App() {
     const drafts = (ok?.scripts ?? []).map((s) => s.file).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).map((f) => {
       const draft = project.files[versionFile(f, "draft")];
       const play = project.files[f] ?? "";
-      return { file: f, fromPlay: draft === undefined, text: draft ?? toLayer("draft", play, parseScript(play, ok!.config, f), ok!.config).text };
+      // Requests to Claude are never part of the book.
+      const story = draft === undefined ? undefined : storyOnly(draft, choicesIn(draft, readLevels(project.files)[versionFile(f, "draft")]));
+      return { file: f, fromPlay: draft === undefined, text: story ?? toLayer("draft", play, parseScript(play, ok!.config, f), ok!.config).text };
     });
     return { drafts, title: settings.title || project.name, author: settings.author || "" };
   };
@@ -430,14 +475,14 @@ export function App() {
   };
 
   return (
-    <div className={`app side-${prefs.sidePanel} ${prefs.showOutline ? "" : "no-outline"} ${prefs.showAuthors === false ? "no-authors" : ""} m-${mobile}`}>
+    <div className={`app side-${prefs.sidePanel} ${prefs.showOutline ? "" : "no-outline"} ${prefs.showAuthors === false ? "no-authors" : ""} ${prefs.showLevels === false ? "no-levels" : ""} m-${mobile}`}>
       <header className="topbar">
         <div className="brand" title={`${theme.brand.name} ${theme.brand.product}`}>
           <img className="brand-logo" src={theme.brand.logo} alt={theme.brand.name} />
           <img className="brand-icon" src={theme.brand.icon} alt={theme.brand.name} />
           <span className="brand-divider" aria-hidden="true" />
           <span className="brand-product">{theme.brand.product}</span>
-          <span className="brand-version" title={`Version ${__APP_VERSION__}`}>{__APP_VERSION__.replace(/\.0$/, "")}</span>
+          <span className="brand-version" title={`Version ${__APP_VERSION__}${__APP_CODENAME__ ? ` “${__APP_CODENAME__}”` : ""}`}>{__APP_VERSION__.replace(/\.0$/, "")}</span>
         </div>
         <select className="project-picker" value={project.id} onChange={(e) => openProjectAt(projects.find((p) => p.id === e.target.value)!)} aria-label="Project">
           {projects.map((p) => (
@@ -479,8 +524,8 @@ export function App() {
       <main className={`main view-${isScript ? shownLayer : "play"}`}>
         {file.endsWith(".sheet") && <SheetBar raw={rawSheet} setRaw={setRawSheet} />}
         {isScript && (
-          <LayerBar versions={versions} layer={shownLayer} setLayer={setLayer} behind={behind} busy={!!busy} gaps={layer === "draft" ? findGaps(project.files[vFile("draft")] ?? "").length : 0}
-            onInsert={insertBlock} onTogether={(stretch) => setTogether({ stretch, direction: together?.direction ?? "" })} onWriteGaps={() => void ai.writeGaps()} />
+          <LayerBar versions={versions} layer={shownLayer} setLayer={setLayer} behind={behind} busy={!!busy} open={draftOpen}
+            onInsert={insertBlock} onTogether={(stretch) => setTogether({ stretch, direction: together?.direction ?? "" })} onUnfold={() => void ai.unfold()} />
         )}
         {isScript && (shownLayer === "draft" || shownLayer === "play") && prefs.showWriterBar !== false && ok && (
           <WriterBar layer={shownLayer} sheets={ok.sheets.map((x) => x.sheet)} blocks={ok.config.blocks} pop={pop}
@@ -514,6 +559,9 @@ export function App() {
             links={links}
             claude={claudeShown}
             onClaude={isScript && layer === "draft" ? ai.onClaudeSpans : undefined}
+            choices={isScript && layer === "draft" ? draftChoices : undefined}
+            onChoices={isScript && layer === "draft" ? saveChoices : undefined}
+            onLevelPick={isScript && layer === "draft" && prefs.showLevels !== false ? pickLevel : undefined}
             onOpenLink={openLink}
             onContext={setMenu}
           />
@@ -559,7 +607,15 @@ export function App() {
       )}
       {ai.writing && (
         <DiffReview label="Review Claude's writing" title={ai.writing.title} before={ai.writing.before} after={ai.writing.after} scrollToChange acceptId="fill-accept"
-          note={`Green lines are Claude's writing${ai.writing.after.includes("{{") || ai.writing.before.includes("{{") ? ", red lines are your notes" : ""}. Nothing changes until you accept; the text before goes to History.`}
+          note="Green lines are Claude's writing, red lines are your notes and keywords it wrote out. Nothing changes until you accept; the text before goes to History."
+          footer={(!!ai.writing.answers?.length || (!!ai.writing.tip && prefs.showTips !== false)) && (
+            <div className="unfold-notes">
+              {!!ai.writing.answers?.length && (
+                <div><h3>Your requests</h3><ul>{ai.writing.answers.map((a, k) => <li key={k}>{a}</li>)}</ul></div>
+              )}
+              {!!ai.writing.tip && prefs.showTips !== false && <p className="writing-tip"><b>Writing tip</b> {ai.writing.tip}</p>}
+            </div>
+          )}
           onClose={() => ai.setWriting(null)} onRetry={() => { const r = ai.writing!; ai.setWriting(null); r.retry(); }} onAccept={() => ai.acceptWriting(ai.writing!)} />
       )}
       {ai.reviewing && (

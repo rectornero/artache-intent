@@ -15,9 +15,11 @@ export function SheetBar({ raw, setRaw }: { raw: boolean; setRaw: (raw: boolean)
 }
 
 /** Above a script: the three versions, and what each one can insert or ask Claude for. */
-export function LayerBar({ versions, layer, setLayer, behind, busy, gaps, onInsert, onTogether, onWriteGaps, children }: {
-  versions: Version[]; layer: Version; setLayer: (l: Version) => void; behind: (l: Version) => boolean; busy: boolean; gaps: number;
-  onInsert: (kind: "draft" | "renpy" | "mv") => void; onTogether: (s: Stretch) => void; onWriteGaps: () => void; children?: React.ReactNode;
+export function LayerBar({ versions, layer, setLayer, behind, busy, open, onInsert, onTogether, onUnfold, children }: {
+  versions: Version[]; layer: Version; setLayer: (l: Version) => void; behind: (l: Version) => boolean; busy: boolean;
+  /** Draft: Fast and Medium passages and requests still to unfold. */
+  open: number;
+  onInsert: (kind: "draft" | "renpy" | "mv") => void; onTogether: (s: Stretch) => void; onUnfold: () => void; children?: React.ReactNode;
 }) {
   return (
     <div className="toolbar" role="toolbar" aria-label="Layers">
@@ -44,7 +46,9 @@ export function LayerBar({ versions, layer, setLayer, behind, busy, gaps, onInse
             <option value="">✦ Write together</option>
             {(Object.keys(STRETCHES) as Stretch[]).map((k) => <option key={k} value={k}>Next {STRETCHES[k].label.toLowerCase()} ({STRETCHES[k].short})</option>)}
           </select>
-          {gaps > 0 && <button className="claude-go" disabled={busy} data-testid="write-gaps" title="Claude writes each {{ note }} as prose in your style; you review it first" onClick={onWriteGaps}>✦ Write {gaps} part{gaps === 1 ? "" : "s"}</button>}
+          <button className="claude-go unfold" disabled={busy} data-testid="unfold"
+            title="Claude writes out your keywords and sketches in your style, keeps what you finished, and carries out your requests. You review it first."
+            onClick={onUnfold}>✦ Unfold{open > 0 && <i className="unfold-count">{open}</i>}</button>
         </div>
       )}
       {children}

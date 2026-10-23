@@ -7,7 +7,7 @@ import type { Block, ManuscriptOptions, Run } from "../src/core/manuscript.ts";
 export async function manuscriptPdf(blocks: Block[], opts: ManuscriptOptions, words: number): Promise<Uint8Array> {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "pt", format: opts.paper, compress: true });
-  doc.setProperties({ title: opts.title, author: opts.author, creator: "Artache Intent" });
+  doc.setProperties({ title: opts.title, author: opts.author, creator: "Artache Intent Writer" });
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
   const M = 72, LEAD = 24, INDENT = 36, SIZE = 12;
   const right = W - M;

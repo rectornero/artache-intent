@@ -97,15 +97,16 @@ jobs:
         run: |
           V=$(node -p "require('./package.json').version")
           echo "V=$V" >> "$GITHUB_ENV"
+          echo "CODENAME=$(node -p "require('./package.json').codename || ''")" >> "$GITHUB_ENV"
           mkdir out
-          cp "$(find dist-artifacts/artache-intent-android -name '*.apk' | head -1)" "out/Artache-Intent-$V-android-arm64.apk"
-          cp "$(find dist-artifacts/artache-intent-windows -path '*nsis*' -name '*.exe' | head -1)" "out/Artache-Intent-$V-windows-setup.exe"
+          cp "$(find dist-artifacts/artache-intent-android -name '*.apk' | head -1)" "out/Artache-Intent-Writer-$V-android-arm64.apk"
+          cp "$(find dist-artifacts/artache-intent-windows -path '*nsis*' -name '*.exe' | head -1)" "out/Artache-Intent-Writer-$V-windows-setup.exe"
           cp dist-mcp/intent-mcp.mjs "out/intent-mcp-$V.mjs"
           ls -la out
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.V }}
-          name: Artache Intent ${{ env.V }}
+          name: Artache Intent Writer ${{ env.V }} ${{ env.CODENAME }}
           prerelease: true
           files: out/*
           body: Test build for Windows 10/11 (64-bit) and Android 7 to 16. The APK is a debug build for sideloading. intent-mcp is the Claude connector (needs Node.js 20+); the Windows app already includes it.

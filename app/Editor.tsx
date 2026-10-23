@@ -5,7 +5,8 @@ import { EditorView, highlightActiveLine, keymap, lineNumbers } from "@codemirro
 import { json } from "./jsonMode.ts";
 import { useEffect, useRef } from "react";
 import type { Diagnostic } from "../src/core/ast.ts";
-import { claudeSpansField, gapMarks, intentLanguage, setClaudeSpans, intentLinter, layerStripes, refreshLinks, sheetLinks, type LinkTarget } from "./intentMode.ts";
+import { choicesField, claudeSpansField, intentLanguage, intentLevels, setChoices, setClaudeSpans, intentLinter, layerStripes, refreshLinks, sheetLinks, type LinkTarget } from "./intentMode.ts";
+import type { Choice, Level } from "../src/core/levels.ts";
 
 export type Insertion = { text: string; block?: boolean; n: number };
 
@@ -29,9 +30,13 @@ interface Props {
   /** The stretches Claude wrote (Draft only), and where they are after the writer's edits. */
   claude?: { from: number; to: number }[];
   onClaude?: (spans: { from: number; to: number }[], doc: string) => void;
+  /** Intent writing (Draft only): the writer's choices of level, where they are after edits, and a tap on a line's edge. */
+  choices?: Choice[];
+  onChoices?: (choices: Choice[], doc: string) => void;
+  onLevelPick?: (at: { lineFrom: number; level: Level; chosen: boolean; x: number; y: number }) => void;
 }
 
-export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, jumpTo, insert, spellcheck = false, links = [], onOpenLink, onContext, claude, onClaude }: Props) {
+export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, jumpTo, insert, spellcheck = false, links = [], onOpenLink, onContext, claude, onClaude, choices, onChoices, onLevelPick }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const diags = useRef(diagnostics);
@@ -50,6 +55,11 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
   ctxRef.current = onContext;
   const claudeRef = useRef(onClaude);
   claudeRef.current = onClaude;
+  const choicesRef = useRef(onChoices);
+  choicesRef.current = onChoices;
+  const pickRef = useRef(onLevelPick);
+  pickRef.current = onLevelPick;
+  const withLevels = !!onLevelPick;
 
   useEffect(() => {
     const v = new EditorView({
@@ -61,7 +71,7 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
           history(),
           highlightActiveLine(),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-          isJson ? json() : [intentLanguage(), layerStripes(), gapMarks(), claudeSpansField, intentLinter(() => diags.current), sheetLinks(() => linkRef.current, (t) => openRef.current?.(t))],
+          isJson ? json() : [intentLanguage(), layerStripes(), withLevels ? [choicesField, intentLevels((at) => pickRef.current?.(at))] : [], claudeSpansField, intentLinter(() => diags.current), sheetLinks(() => linkRef.current, (t) => openRef.current?.(t))],
           wrapComp.current.of(wrap ? EditorView.lineWrapping : []),
           spellComp.current.of(spellAttrs(spellcheck)),
           EditorView.domEventHandlers({
@@ -88,6 +98,9 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
             if (u.docChanged) cb.current.onChange(u.state.doc.toString());
             const spans = isJson ? null : u.state.field(claudeSpansField, false);
             if (spans && spans !== u.startState.field(claudeSpansField, false) && !u.transactions.some((tr) => tr.annotation(Transaction.remote) || tr.effects.some((e) => e.is(setClaudeSpans)))) claudeRef.current?.(spans, u.state.doc.toString());
+            const cs = isJson ? null : u.state.field(choicesField, false);
+            // A typed tag sets choices itself (an input with setChoices); a choice from the project doesn't come back.
+            if (cs && cs !== u.startState.field(choicesField, false) && !u.transactions.some((tr) => tr.annotation(Transaction.remote) || (tr.effects.some((e) => e.is(setChoices)) && !tr.isUserEvent("input")))) choicesRef.current?.(cs, u.state.doc.toString());
             if (u.selectionSet || u.docChanged) cb.current.onCursorLine(u.state.doc.lineAt(u.state.selection.main.head).number);
           }),
         ],
@@ -96,7 +109,8 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
     view.current = v;
     return () => v.destroy();
     // A new document gets a new editor; typing doesn't recreate it.
-  }, [docKey, isJson]);
+  }, [docKey, isJson, withLevels]);
+
 
   useEffect(() => {
     view.current?.dispatch({ effects: wrapComp.current.reconfigure(wrap ? EditorView.lineWrapping : []) });
@@ -122,6 +136,15 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
     const now = v.state.field(claudeSpansField, false);
     if (now && JSON.stringify(now) !== claudeKey) v.dispatch({ effects: setClaudeSpans.of(JSON.parse(claudeKey)) });
   }, [claudeKey, value, docKey, isJson]);
+
+  // The writer's choices from the project: after the text, so they land on the right lines.
+  const choicesKey = JSON.stringify(choices ?? []);
+  useEffect(() => {
+    const v = view.current;
+    if (!v || !withLevels) return;
+    const now = v.state.field(choicesField, false);
+    if (now && JSON.stringify(now) !== choicesKey) v.dispatch({ effects: setChoices.of(JSON.parse(choicesKey)) });
+  }, [choicesKey, value, docKey, withLevels]);
 
   const linkKey = links.map((l) => `${l.name}|${l.stub ? 1 : 0}`).join(",");
   useEffect(() => {
