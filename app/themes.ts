@@ -166,7 +166,7 @@ export const WRITING_FONTS: Array<{ id: string; label: string; css: string }> = 
   { id: "mono", label: "JetBrains Mono: code-like", css: FONTS.editor },
 ];
 
-export const TEXT_SIZES = { min: 12, max: 40 };
+export const TEXT_SIZES = { min: 12, max: 72 };
 
 export interface UiPrefs {
   themeId: string;

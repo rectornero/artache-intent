@@ -238,7 +238,7 @@ made are highlighted (Settings → Highlight names turns that off too).
   screen (Settings → Keep the line in the middle).
 - *A page*: the Draft is a centred column with no line numbers (Settings → Line numbers in
   the Draft). **Focus** (the corners button, Ctrl+.; Esc leaves) shows only the page.
-- *Sizes and fonts*: text from 12 to 40 px (Ctrl+= and Ctrl+−), and a story font and a
+- *Sizes and fonts*: text from 12 to 72 px (A− and A+ in the top bar, Ctrl+= and Ctrl+−), and a story font and a
   script font: Fraunces, Literata, Lora, Nunito, Inter, Atkinson Hyperlegible, Courier Prime
   or JetBrains Mono, all bundled so they work offline.
 - *Layout*: the files column and the panel can be dragged wider or narrower (double-click

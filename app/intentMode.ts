@@ -12,7 +12,9 @@ interface St {
   sol: boolean;
 }
 
-const intentStream = StreamLanguage.define<St>({
+// The Draft is prose: no speaker names ("Name:"), cue dashes or parentheticals coloured, only
+// what a Draft made from Play still carries (comments, headings, blocks, directions).
+const makeStream = (draft: boolean) => StreamLanguage.define<St>({
   startState: () => ({ sol: true }),
   token(stream, st) {
     if (stream.sol()) {
@@ -25,9 +27,9 @@ const intentStream = StreamLanguage.define<St>({
       if (stream.match(/^[?>](?=\s)/)) return "controlKeyword";
       if (stream.match(/^[!+](?=\s)/)) return "operator";
       if (stream.match(/^TODO:?/)) return "invalid";
-      if (stream.match(/^\([^)]*\)(?=\s)/)) return "typeName";
-      if (stream.match(/^[^:\[\]()\s][^:\[\]()]{0,29}?(\s*\([^)]*\))?\s*:(?=\s)/)) return "typeName";
-      if (stream.match(/^-(?=\s)/)) return "typeName";
+      if (!draft && stream.match(/^\([^)]*\)(?=\s)/)) return "typeName";
+      if (!draft && stream.match(/^[^:\[\]()\s][^:\[\]()]{0,29}?(\s*\([^)]*\))?\s*:(?=\s)/)) return "typeName";
+      if (!draft && stream.match(/^-(?=\s)/)) return "typeName";
     }
     st.sol = false;
     if (stream.match(/^\/\/.*/)) return "comment";
@@ -59,8 +61,11 @@ const style = HighlightStyle.define([
   { tag: t.invalid, color: "var(--warning)", fontWeight: "700" },
 ]);
 
-export function intentLanguage(): Extension {
-  return [intentStream, syntaxHighlighting(style)];
+const playStream = makeStream(false);
+const draftStream = makeStream(true);
+
+export function intentLanguage(draft = false): Extension {
+  return [draft ? draftStream : playStream, syntaxHighlighting(style)];
 }
 
 export function intentLinter(get: () => Diagnostic[]): Extension {
