@@ -1,7 +1,7 @@
 #!/usr/bin/env -S npx tsx
 // intent <project-dir> [-o out-dir] [--target renpy|mv]
 // A project dir holds intent.json (settings), *.intent script files and
-// *.sheet files (at the top or in characters/, places/, items/, minigames/).
+// *.sheet files (at the top or in characters/, places/, items/, minigames/, clues/).
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { compileProject } from "./project.ts";

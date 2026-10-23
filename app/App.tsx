@@ -7,6 +7,7 @@ import { findGaps } from "../src/core/fill.ts";
 import { toLayer, type Layer } from "../src/core/layers.ts";
 import { parseScript, slug } from "../src/core/parser.ts";
 import { assetsFromMv, assetsFromRenpy } from "../src/core/assets.ts";
+import { clueBoard } from "../src/core/mystery.ts";
 import { detectMinigames, sheetFileName, sheetNames, sheetUsage, type SheetKind } from "../src/core/sheets.ts";
 import { inSync, markSynced, neighbours, pairOf, pairState, SYNC_FILE, versionFile, type Version } from "../src/core/sync.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
@@ -38,6 +39,7 @@ const ChecksPanel = lazy(() => import("./ChecksPanel.tsx").then((m) => ({ defaul
 const ConnectClaude = lazy(() => import("./ConnectClaude.tsx").then((m) => ({ default: m.ConnectClaude })));
 const HandoffModal = lazy(() => import("./HandoffModal.tsx").then((m) => ({ default: m.HandoffModal })));
 const HistoryPanel = lazy(() => import("./HistoryPanel.tsx").then((m) => ({ default: m.HistoryPanel })));
+const ClueBoard = lazy(() => import("./ClueBoard.tsx").then((m) => ({ default: m.ClueBoard })));
 const MvView = lazy(() => import("./MvView.tsx").then((m) => ({ default: m.MvView })));
 const SearchPanel = lazy(() => import("./SearchPanel.tsx").then((m) => ({ default: m.SearchPanel })));
 const Settings = lazy(() => import("./Settings.tsx").then((m) => ({ default: m.Settings })));
@@ -332,6 +334,10 @@ export function App() {
           onSaveProjectFile={() => void io.saveAsProjectFile(project.files)} onOpenProjectFile={() => void io.openProject()} />
       );
       case "checks": return <ChecksPanel files={project.files} script={isScript ? file : null} busy={!!busy} onRun={(w) => void ai.runCheck(w)} onOpen={openAt} onDismiss={dismissIssue} />;
+      case "clues": return (
+        <ClueBoard board={clueBoard(result.sheets, result.scripts)} onOpenSheet={openSheet} onOpen={openAt}
+          onNewClue={() => { const n = prompt("New clue name"); if (n?.trim()) fx.createSheet("clue", n.trim()); }} />
+      );
       case "search": return <SearchPanel files={project.files} onOpen={openAt} onReplace={fx.applyReplace} />;
       case "renpy": return <pre className="code">{script ? result.files[`renpy/${slug(script.file.replace(/\.[^.]+$/, ""))}.rpy`] ?? "" : result.files["renpy/intent_defs.rpy"]}</pre>;
       case "mv": return <MvView json={result.files["mv/CommonEvents.intent.json"]} />;

@@ -24,7 +24,7 @@ export function compileProject(settings: unknown, sources: Record<string, string
   for (const [file, src] of Object.entries(sources).filter(([f]) => f.endsWith(".sheet"))) {
     const sheet = parseSheet(src);
     if (sheet) sheets.push({ file, sheet });
-    else sheetErrors.push({ level: "error", line: 1, message: "A sheet starts with @character, @place, @item or @minigame and a name", file });
+    else sheetErrors.push({ level: "error", line: 1, message: "A sheet starts with @character, @place, @item, @minigame or @clue and a name", file });
   }
   // Sheets fill the cast and backgrounds; anything written in intent.json wins.
   const s0 = (settings ?? {}) as Record<string, any>;

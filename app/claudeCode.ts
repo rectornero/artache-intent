@@ -16,7 +16,7 @@ The format is described in [INTENT_SPEC.md](INTENT_SPEC.md). Read it before edit
 - \`*.intent\`: **Play**, the script in Intent Script. This is the main version.
 - \`*.draft\`: **Draft**, the same story as prose, in the writer's own words.
 - \`*.rpy\`: **Code**, the Ren'Py version of a script, possibly hand-tuned. Only \`.rpy\` files next to a \`.intent\` of the same name belong to Intent.
-- \`characters/\`, \`places/\`, \`items/\`, \`minigames/\`: **sheets** (\`*.sheet\`), one per character, place, item or minigame.
+- \`characters/\`, \`places/\`, \`items/\`, \`minigames/\`, \`clues/\`: **sheets** (\`*.sheet\`), one per character, place, item, minigame or clue.
 - \`intent.json\`: project settings.
 - \`intent.sync.json\`: Intent's record of which versions are in step. **Never edit it.**
 - \`intent.checks.json\`: story check results (see below).

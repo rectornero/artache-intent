@@ -119,8 +119,8 @@ and common event ids, known ids by name).
 
 ## Sheets (0.2)
 
-A sheet is one plain-text file per Character, Place, Item or Minigame, kept in
-`characters/`, `places/`, `items/` or `minigames/`. The app shows it as a form.
+A sheet is one plain-text file per Character, Place, Item, Minigame or Clue, kept in
+`characters/`, `places/`, `items/`, `minigames/` or `clues/`. The app shows it as a form.
 
 ```
 @character Tony
@@ -169,7 +169,7 @@ appearance: Forties, ironed shirt.
 expressions: neutral, nervous
 ```
 
-- First line: `@character|@place|@item|@minigame Name`. Then `key: value` lines;
+- First line: `@character|@place|@item|@minigame|@clue Name`. Then `key: value` lines;
   indented lines continue the value above. `##` headings are only for reading.
 - Character sheets join the cast (cast key = `id` or the name in capitals);
   nicknames become aliases. Place sheets add backgrounds under every name.
@@ -184,6 +184,23 @@ expressions: neutral, nervous
 - Fields with a short list of answers (gender, role, entrance side, setting, mood,
   item type, minigame type and difficulty) are dropdowns in the form; some also take
   a value of your own. An old `pronouns:` line is read as gender.
+
+## Mystery kit (0.4)
+
+- **Clue sheets** (`@clue Name`, in `clues/`): type, what it is, *points to* (who or
+  what it seems to accuse), *what it really means*, *red herring* (No, Yes, Partly),
+  *found at*, *known by* (characters, comma separated), and where it is planted and
+  revealed. An Item whose type is Clue or Evidence counts as a clue too.
+- **Character sheets** have a Mystery section: *alibi*, *does the alibi hold?*
+  (Unchecked, Holds, Shaky, False) and *knows* (what they know, and when they learn it).
+- **Tools → Clues** is the clue board, worked out from the sheets and scripts and never
+  stored. By clue: what it points to, its real meaning, who knows it, and every scene
+  that mentions it (the first one marked), each a link. By suspect: alibi, whether it
+  holds, what they know, and the clues against them. Suspects are characters with the
+  role Suspect, Antagonist, Witness or Victim, an alibi, or a clue pointing at them.
+- *Still open* lists what looks unfinished: a clue no script mentions, a clue that
+  points to nobody, a red herring with no real meaning written down, a *known by* name
+  with no character sheet, and a suspect with no alibi or no clue against them.
 
 ## Find, replace and rename (0.3)
 

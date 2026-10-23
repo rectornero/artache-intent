@@ -1,15 +1,15 @@
 import { Icon } from "./Icon.tsx";
 
-export type Tab = "sheet" | "play" | "book" | "search" | "checks" | "backups" | "assets" | "renpy" | "mv" | "report" | "bible" | "history";
+export type Tab = "sheet" | "play" | "book" | "search" | "checks" | "clues" | "backups" | "assets" | "renpy" | "mv" | "report" | "bible" | "history";
 
 // The right panel: groups instead of a row of tabs. Ren'Py code lives in the Code version.
 const PANEL_GROUPS: Array<{ id: string; label: string; icon: string; tabs: Tab[] }> = [
   { id: "read", label: "Read", icon: "story", tabs: ["play", "book"] },
   { id: "find", label: "Find", icon: "search", tabs: ["search"] },
   { id: "export", label: "Export", icon: "engine", tabs: ["assets", "report", "mv", "renpy"] },
-  { id: "tools", label: "Tools", icon: "data", tabs: ["checks", "history", "backups", "bible"] },
+  { id: "tools", label: "Tools", icon: "data", tabs: ["checks", "clues", "history", "backups", "bible"] },
 ];
-const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", search: "Find", checks: "Story check", backups: "Backups", assets: "Assets", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
+const TAB_NAMES: Record<Tab, string> = { sheet: "Sheet", play: "Preview", book: "Book", search: "Find", checks: "Story check", clues: "Clues", backups: "Backups", assets: "Assets", renpy: "Ren'Py (all files)", mv: "RPG Maker MV", report: "Report", bible: "Bible", history: "History" };
 
 /** The right (or bottom) panel: group tabs, sub-tabs, and whatever the tab shows. */
 export function SidePanel({ tab, setTab, sheetName, children }: { tab: Tab; setTab: (t: Tab) => void; sheetName: string | null; children: React.ReactNode }) {

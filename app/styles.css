@@ -526,3 +526,24 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .modal.together .seg { margin: 12px 0; }
 .together-dir { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .together-dir textarea { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); resize: vertical; }
+
+/* Mystery kit: the clue board. */
+.k-clue { --kind: var(--warning); }
+.editor .cm-sheet-clue { --kind: var(--warning); }
+.clue-board { display: flex; flex-direction: column; gap: 12px; }
+.clue-board .checks-head .ghost { margin-left: auto; }
+.clue-card { border-left-color: var(--kind); }
+.clue-card.herring { border-left-style: dashed; }
+.clue-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; padding: 0; background: none; border: 0; color: var(--text); cursor: pointer; }
+.clue-name .icon-svg { color: var(--kind); }
+.clue-card dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 8px 0 0; font-size: 13px; line-height: 1.45; }
+.clue-card dt { color: var(--muted); }
+.clue-card dd { margin: 0; white-space: pre-wrap; }
+.clue-scenes { display: flex; flex-wrap: wrap; gap: 4px; }
+.clue-scenes .chip { cursor: pointer; border: 1px solid var(--border); }
+.chip.warn, .chip.holds.warn { background: color-mix(in srgb, var(--warning) 16%, transparent); }
+.chip.holds.bad { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.chip.holds.good { background: color-mix(in srgb, var(--good, #2e7d4f) 16%, transparent); }
+.clue-warnings { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+.clue-warnings .link { text-align: left; background: none; border: 0; padding: 0; color: var(--text); text-decoration: none; cursor: pointer; }
+.clue-warnings .link:hover { text-decoration: underline; }

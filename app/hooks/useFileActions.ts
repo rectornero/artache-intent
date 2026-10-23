@@ -1,5 +1,5 @@
 import { deleteFile, renameScript, renameSheet, type ReplaceResult } from "../../src/core/search.ts";
-import { newSheet, sheetFileName, SHEET_KINDS, type SheetKind } from "../../src/core/sheets.ts";
+import { newSheet, sheetFileName, SHEET_HEAD, SHEET_KINDS, type SheetKind } from "../../src/core/sheets.ts";
 import { versionFile } from "../../src/core/sync.ts";
 import type { CompileResult } from "../../src/project.ts";
 import { saveSnapshot } from "../history.ts";
@@ -109,7 +109,7 @@ export function useFileActions(c: {
   // Files picked from disk join the current project; sheets go to their kind's folder.
   const addFiles = (incoming: Files) => {
     const named = Object.entries(incoming).map(([n, text]) => {
-      const kind = text.trimStart().match(/^@(character|place|item|minigame)\s+(.+)/);
+      const kind = text.trimStart().split("\n")[0].trim().match(SHEET_HEAD);
       return [kind ? sheetFileName(kind[1] as SheetKind, kind[2].trim()) : n, text] as const;
     });
     if (!named.length) return;

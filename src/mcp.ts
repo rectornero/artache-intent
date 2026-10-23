@@ -13,7 +13,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { compileProject } from "./project.ts";
-import { parseSheet } from "./core/sheets.ts";
+import { parseSheet, SHEET_KINDS } from "./core/sheets.ts";
 import { findAll, renameSheet, replaceAll, type Scope } from "./core/search.ts";
 import { inSync, markSynced, pairOf, pairState, SYNC_FILE, versionFile, type Version } from "./core/sync.ts";
 import { slug } from "./core/parser.ts";
@@ -27,7 +27,7 @@ if (!existsSync(join(root, "intent.json")) && !readdirSync(root).some((f) => f.e
   process.exit(2);
 }
 
-const SHEET_DIRS = ["characters", "places", "items", "minigames"];
+const SHEET_DIRS = Object.values(SHEET_KINDS).map((k) => k.folder);
 /** The files Intent owns; everything else in the folder is left alone. */
 const isIntentFile = (f: string) =>
   /^[^/]+\.(intent|draft|rpy)$/.test(f) || /^([^/]+\/)?[^/]+\.sheet$/.test(f) || f === "intent.json" || f === SYNC_FILE || f === CHECKS_FILE;
@@ -165,7 +165,7 @@ server.registerTool(
 
 server.registerTool(
   "intent_rename_sheet",
-  { title: "Rename a sheet", description: "Rename a character, place, item or minigame and every whole-word mention of it, keeping case.", inputSchema: { sheet: z.string().describe("The sheet file, e.g. characters/tony.sheet"), new_name: z.string() } },
+  { title: "Rename a sheet", description: "Rename a character, place, item, minigame or clue and every whole-word mention of it, keeping case.", inputSchema: { sheet: z.string().describe("The sheet file, e.g. characters/tony.sheet"), new_name: z.string() } },
   async ({ sheet, new_name }) => {
     const before = load();
     const r = renameSheet(before, sheet, new_name);

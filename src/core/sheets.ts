@@ -1,4 +1,4 @@
-// Character, Place, Item and Minigame sheets: one plain-text `.sheet` file each,
+// Character, Place, Item, Minigame and Clue sheets: one plain-text `.sheet` file each,
 // shown as a form. Sheets feed the cast and assets, and Intent fills each
 // sheet's Usage from the scripts so it knows where it is used.
 
@@ -7,7 +7,7 @@ import type { CastMember } from "./config.ts";
 import { plainText } from "./inline.ts";
 import { slug } from "./parser.ts";
 
-export type SheetKind = "character" | "place" | "item" | "minigame";
+export type SheetKind = "character" | "place" | "item" | "minigame" | "clue";
 
 export interface FieldSpec {
   key: string;
@@ -59,6 +59,7 @@ export const SHEET_KINDS: Record<SheetKind, { label: string; plural: string; fol
       { id: "look", label: "Look", fields: [f("appearance", "Appearance", "What a stranger notices", true), f("outfit", "Outfit"), { ...f("color", "Colour"), colour: true }, f("expressions", "Expressions", "neutral, smile, angry")] },
       { id: "voice", label: "Voice", fields: [f("speech", "How they talk", "Short sentences, never swears…", true), f("catchphrases", "Catchphrases"), f("never", "Words they never use"), f("sample", "Sample line", undefined, true)] },
       { id: "story", label: "Story", fields: [f("want", "Want"), f("need", "Need"), f("wound", "Wound"), f("secret", "Secret"), f("arc", "Arc", undefined, true), f("relations", "Relations", "Juu: sister. Tony: owes him money.", true)] },
+      { id: "mystery", label: "Mystery", fields: [f("alibi", "Alibi", "Where they say they were, and who backs it up", true), pick("alibiHolds", "Does the alibi hold?", ["Unchecked", "Holds", "Shaky", "False"]), f("knows", "Knows", "What they know, and when they learn it", true)] },
       ...promptSections(),
       { id: "game", label: "Game", fields: [f("id", "Code id", "Used in Ren'Py and file names"), f("image", "Ren'Py image tag"), f("face", "MV face", "Actor1, 0"), pick("entrance", "Usual entrance side", ["Left", "Right", "Centre"])] },
     ],
@@ -96,7 +97,21 @@ export const SHEET_KINDS: Record<SheetKind, { label: string; plural: string; fol
       { id: "engine", label: "Engine", fields: [f("renpy", "Ren'Py screen or label"), f("mv", "MV plugin command")] },
     ],
   },
+  clue: {
+    label: "Clue",
+    plural: "Clues",
+    folder: "clues",
+    sections: [
+      { id: "identity", label: "Clue", fields: [pick("type", "Type", ["Physical", "Testimony", "Document", "Observation", "Forensic", "Digital"], true), f("nicknames", "Other names"), f("description", "What it is", undefined, true)] },
+      { id: "mystery", label: "Mystery", fields: [f("pointsTo", "Points to", "Who or what it seems to point at"), f("truth", "What it really means", undefined, true), pick("herring", "Red herring", ["No", "Yes", "Partly"]), f("foundAt", "Found at", "A place"), f("knownBy", "Known by", "Characters who know about it, comma separated")] },
+      { id: "story", label: "Story", fields: [f("planted", "Planted", "Where the player first sees it"), f("revealed", "Revealed", "Where its meaning comes out")] },
+    ],
+  },
 };
+
+const KIND_NAMES = Object.keys(SHEET_KINDS).join("|");
+/** A sheet's first line: `@kind Name`. */
+export const SHEET_HEAD = new RegExp(`^@(${KIND_NAMES})\\s+(.+)$`);
 
 /** Phrases that announce a minigame in prose or script, e.g. "an Investigation minigame". */
 export const MINIGAME_TRIGGERS = [
@@ -115,7 +130,7 @@ export function listValue(v: string | undefined): string[] {
 export function parseSheet(text: string): Sheet | null {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   let i = lines.findIndex((l) => l.trim());
-  const head = lines[i]?.trim().match(/^@(character|place|item|minigame)\s+(.+)$/);
+  const head = lines[i]?.trim().match(SHEET_HEAD);
   if (!head) return null;
   const sheet: Sheet = { kind: head[1] as SheetKind, name: head[2].trim(), fields: {}, notes: [] };
   let last: string | null = null;
