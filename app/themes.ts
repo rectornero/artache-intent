@@ -160,6 +160,8 @@ export interface UiPrefs {
   sidePanel: "right" | "bottom" | "hidden";
   showOutline: boolean;
   wrap: boolean;
+  /** Draft: Claude's writing in its own colour. */
+  showAuthors: boolean;
 }
 
 export const DEFAULT_PREFS: UiPrefs = {
@@ -169,6 +171,7 @@ export const DEFAULT_PREFS: UiPrefs = {
   sidePanel: "right",
   showOutline: true,
   wrap: true,
+  showAuthors: true,
 };
 
 export function activeTheme(p: UiPrefs): Theme {

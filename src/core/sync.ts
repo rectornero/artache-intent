@@ -16,7 +16,7 @@ export function versionFile(play: string, v: Version): string {
 }
 
 /** Files that belong to another file's versions, or Intent's own records (sync, story checks). */
-export const isVersionFile = (name: string) => name === SYNC_FILE || name === "intent.checks.json" || name.endsWith(".draft") || name.endsWith(".rpy");
+export const isVersionFile = (name: string) => name === SYNC_FILE || name === "intent.checks.json" || name === "intent.authors.json" || name.endsWith(".draft") || name.endsWith(".rpy");
 
 type SyncRecord = Record<string, Partial<Record<Pair, Partial<Record<Version, string>>>>>;
 

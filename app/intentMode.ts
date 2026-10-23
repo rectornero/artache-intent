@@ -171,3 +171,29 @@ export function gapMarks(): Extension {
     provide: (f) => EditorView.decorations.from(f),
   });
 }
+
+/** Replaces the stretches Claude wrote (from the project, or after Claude writes more). */
+export const setClaudeSpans = StateEffect.define<{ from: number; to: number }[]>();
+
+/**
+ * The stretches Claude wrote, kept in step with every edit. Whatever the writer
+ * types inside one becomes theirs. Shown in Claude's colour.
+ */
+export const claudeSpansField = StateField.define<{ from: number; to: number }[]>({
+  create: () => [],
+  update(spans, tr) {
+    for (const e of tr.effects) if (e.is(setClaudeSpans)) return e.value;
+    if (!tr.docChanged) return spans;
+    let out = spans.map((s) => ({ from: tr.changes.mapPos(s.from, 1), to: tr.changes.mapPos(s.to, -1) })).filter((s) => s.to > s.from);
+    tr.changes.iterChanges((_fa, _ta, fb, tb) => {
+      if (tb > fb) out = out.flatMap((s) => (s.to <= fb || s.from >= tb ? [s] : [{ from: s.from, to: fb }, { from: tb, to: s.to }].filter((x) => x.to > x.from)));
+    });
+    return out;
+  },
+  provide: (f) =>
+    EditorView.decorations.from(f, (spans) => {
+      const b = new RangeSetBuilder<Decoration>();
+      for (const s of spans) b.add(s.from, s.to, Decoration.mark({ class: "cm-by-claude" }));
+      return b.finish();
+    }),
+});

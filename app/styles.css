@@ -515,5 +515,14 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 
 /* {{ note }}: a Draft part left for Claude to write */
 .editor .cm-gap { background: color-mix(in srgb, var(--accent) 12%, transparent); border-bottom: 1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent); border-radius: 4px; font-style: italic; }
-.toolbar .toolbar-hint { order: 99; margin-left: auto; font-size: 12px; white-space: nowrap; }
-@media (max-width: 640px) { .toolbar .toolbar-hint { display: none; } }
+
+/* Who wrote what: the writer in the ink colour, Claude in a softened accent. Names stay bold so they read in both. */
+.editor .cm-sheet-link { font-weight: 600; }
+.app:not(.no-authors) .editor .cm-by-claude, .app:not(.no-authors) .editor .cm-by-claude span:not(.cm-sheet-link) { color: color-mix(in srgb, var(--accent) 72%, var(--text)); }
+.draft-tools { order: 99; margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.draft-tools .insert-menu, .draft-tools .claude-go { margin-left: 0; order: 0; }
+.together-menu { width: auto; max-width: 190px; border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); font-weight: 600; }
+.modal.together { max-width: 520px; }
+.modal.together .seg { margin: 12px 0; }
+.together-dir { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.together-dir textarea { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); resize: vertical; }

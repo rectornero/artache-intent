@@ -248,6 +248,45 @@ export function fillJob(marked: string, count: number, cfg: ProjectConfig, sheet
   };
 }
 
+export type Stretch = "page" | "part" | "chapter";
+export const STRETCHES: Record<Stretch, { label: string; short: string; words: string; note: string }> = {
+  page: { label: "Page", short: "~300 words", words: "about 300 words", note: "Carry on the moment where it stands." },
+  part: { label: "Part", short: "~1,200 words", words: "about 1,200 words", note: "Write the next scene, through to a natural break. If the draft marks scenes with headings (\"## Title\"), start the new one with a heading in the same style." },
+  chapter: { label: "Chapter", short: "~4,000 words", words: "about 4,000 words, in several scenes", note: "Write the next chapter. If the draft marks chapters with headings (\"# CHAPTER 2 · Title\"), start with the next one in the same style, and mark its scenes the way the draft does." },
+};
+
+const TOGETHER_SYSTEM = `You write a game story together with its writer. You get their Draft (prose for a visual novel or RPG) and continue it from exactly where it ends.
+
+- Match the writer's style: tense, person, sentence length, how dialogue is tagged ("“Line,” Tony says."), and how much description there is. Read like them, not like you.
+- Keep every character true to their sheet: names, nicknames, gender, voice, what they know so far.
+- Move the story forward the way the draft is heading, and follow the writer's direction if they give one. Don't wrap up threads the writer is clearly saving for later, and don't add major characters or twists that aren't set up.
+- Places and minigames from the sheets can appear; name them the way the sheets do.
+- Leave {{ notes }} in the draft alone: they are the writer's.
+- Return only the new text, starting right after the draft's last words, without repeating any of it.`;
+
+/** Continue the Draft by a page, a part or a chapter; the answer is the new text only. */
+export function togetherJob(draft: string, stretch: Stretch, direction: string, cfg: ProjectConfig, sheets: Sheet[]): Job<string> {
+  const s = STRETCHES[stretch];
+  const trim = (t: string) => t.replace(/^\n+/, "").replace(/\s+$/, "");
+  return {
+    title: `Write the next ${s.label.toLowerCase()} together`,
+    system: TOGETHER_SYSTEM,
+    content: [
+      context(cfg, sheets),
+      `<draft>\n${draft.replace(/\s+$/, "")}\n</draft>`,
+      `Continue it: ${s.words}. ${s.note}`,
+      direction.trim() ? `The writer's direction: ${direction.trim()}` : "The writer gave no direction: follow where the story is going.",
+    ].join("\n\n"),
+    schema: FORMAT.schema,
+    effort: "medium",
+    maxTokens: 32000,
+    thinking: true,
+    read: (d) => trim((d as { text: string }).text),
+    pasteAs: `The new text only, inside one fenced code block (\`\`\`text … \`\`\`).`,
+    readPasted: (a) => trim(fenced(a)),
+  };
+}
+
 const PROMPT_SYSTEM = `You write prompts for generative tools from a game writer's sheet.
 - Image prompts are for an image generator: one paragraph, concrete and visual (subject, look, clothing, pose or framing, setting, light, colour, mood). Characters: a visual novel character sprite, full body, plain background unless the sheet says otherwise. Places: a visual novel background, no people unless the sheet says so. No camera brand names, no artist names.
 - Song prompts are for a music generator: genre, mood, tempo, instruments, structure, and what it should evoke for this character or place. Instrumental unless the sheet asks for lyrics.

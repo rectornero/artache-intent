@@ -5,7 +5,7 @@ import { slug } from "../src/core/parser.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
 import { toLayer, type Layer } from "../src/core/layers.ts";
-import { CLAUDE_MODELS, checkJob, explainFailure, fillJob, loadApiKey, loadModel, loadVia, promptJob, runJob, saveApiKey, saveModel, saveVia, updateJob, type ClaudeModel, type ClaudeVia, type Job } from "./claude.ts";
+import { CLAUDE_MODELS, STRETCHES, checkJob, explainFailure, fillJob, togetherJob, type Stretch, loadApiKey, loadModel, loadVia, promptJob, runJob, saveApiKey, saveModel, saveVia, updateJob, type ClaudeModel, type ClaudeVia, type Job } from "./claude.ts";
 import { HandoffModal } from "./HandoffModal.tsx";
 import { ChecksPanel } from "./ChecksPanel.tsx";
 import { CHECKS_FILE, mergeRun, readChecks, writeChecks } from "../src/core/checks.ts";
@@ -20,7 +20,8 @@ const VERSION_NAMES: Record<Version, string> = { draft: "Draft", play: "Play", r
 const DRAFT_HINT = "Write freely here, like a book.";
 import { parseScript } from "../src/core/parser.ts";
 import { BookView, PreviewNodes } from "./Preview.tsx";
-import { fillGaps, findGaps, markGaps } from "../src/core/fill.ts";
+import { fillGapsAt, findGaps, markGaps } from "../src/core/fill.ts";
+import { AUTHORS_FILE, claudeSpans, readAuthors, writeAuthors, type Span } from "../src/core/authors.ts";
 import { SheetForm, isStub } from "./SheetForm.tsx";
 import { Icon } from "./Icon.tsx";
 import { HistoryPanel } from "./HistoryPanel.tsx";
@@ -102,7 +103,9 @@ export function App() {
     const r = e.currentTarget.getBoundingClientRect();
     setPopMenu({ x: r.left, y: r.bottom + 4, items });
   };
-  const [filling, setFilling] = useState<{ projectId: string; file: string; before: string; after: string; count: number } | null>(null);
+  // Claude's writing waiting for review: ✦ Write or Write together. `spans` are all of Claude's stretches in `after`.
+  const [writing, setWriting] = useState<{ projectId: string; file: string; before: string; after: string; title: string; spans: Span[]; retry: () => void } | null>(null);
+  const [together, setTogether] = useState<{ stretch: Stretch; direction: string } | null>(null);
   const [reviewing, setReviewing] = useState<{ projectId: string; play: string; from: Version; to: Version; before: string; after: string; fromText: string } | null>(null);
 
   useEffect(() => {
@@ -343,6 +346,14 @@ export function App() {
     setReviewing(null);
     say(`${VERSION_NAMES[r.to]} updated.`, 8000, { label: "Undo", run: () => setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files: { ...p.files, [f]: r.before } } : p))) });
   };
+  const withAuthors = (files: Record<string, string>, f: string, text: string, spans: Span[]) => {
+    const json = writeAuthors(files, f, text, spans);
+    const out = { ...files, [f]: text };
+    if (json) out[AUTHORS_FILE] = json;
+    else delete out[AUTHORS_FILE];
+    return out;
+  };
+  const claudeIn = (files: Record<string, string>, f: string) => claudeSpans(files[f] ?? "", readAuthors(files)[f]);
   // ✦ Write: Claude writes the {{ }} parts of the Draft, then review before it changes.
   const writeGaps = async () => {
     if (!ok || busy) return;
@@ -357,18 +368,59 @@ export function App() {
       if (e === CANCELLED) return;
       return say(`Claude couldn't write it: ${explainFailure(e)}. Nothing changed.`, 8000);
     }
-    setFilling({ projectId: project.id, file: f, before, after: fillGaps(before, gaps, parts), count: parts.filter((x) => x.trim()).length });
+    const r = fillGapsAt(before, gaps, parts);
+    const kept = claudeIn(project.files, f).map((x) => ({ from: r.map(x.from), to: r.map(x.to) }));
+    const n = r.written.length;
+    setWriting({ projectId: project.id, file: f, before, after: r.text, title: `✦ Write ${n} part${n === 1 ? "" : "s"} of the Draft`, spans: [...kept, ...r.written], retry: () => void writeGaps() });
   };
-  const acceptFill = (r: NonNullable<typeof filling>) => {
+  // Write together: Claude continues the Draft by a page, a part or a chapter.
+  const writeTogether = async (stretch: Stretch, direction: string) => {
+    if (!ok || busy) return;
+    const f = vFile("draft");
+    const before = project.files[f] ?? "";
+    let more: string;
+    try {
+      more = await askClaude(togetherJob(before, stretch, direction, ok.config, ok.sheets.map((x) => x.sheet)));
+    } catch (e) {
+      if (e === CANCELLED) return;
+      return say(`Claude couldn't write it: ${explainFailure(e)}. Nothing changed.`, 8000);
+    }
+    if (!more.trim()) return say("Claude had nothing to add. Nothing changed.", 6000);
+    const head = before.replace(/\s+$/, "");
+    const join = head ? "\n\n" : "";
+    const after = `${head}${join}${more}\n`;
+    const at = head.length + join.length;
+    const kept = claudeIn(project.files, f).map((x) => ({ from: Math.min(x.from, head.length), to: Math.min(x.to, head.length) }));
+    setWriting({ projectId: project.id, file: f, before, after, title: `✦ Write together: the next ${STRETCHES[stretch].label.toLowerCase()}`, spans: [...kept, { from: at, to: at + more.length }], retry: () => void writeTogether(stretch, direction) });
+  };
+  const acceptWriting = (r: NonNullable<typeof writing>) => {
     const target = projects.find((p) => p.id === r.projectId);
-    setFilling(null);
+    setWriting(null);
     if (!target) return;
-    if ((target.files[r.file] ?? "") !== r.before) return say("The Draft changed while Claude was writing, so nothing was applied. Press ✦ Write again.", 8000);
-    saveSnapshot(r.projectId, r.file, r.before, "Before ✦ Write (your notes)");
+    if ((target.files[r.file] ?? "") !== r.before) return say("The Draft changed while Claude was writing, so nothing was applied. Try again.", 8000);
+    saveSnapshot(r.projectId, r.file, r.before, `Before ${r.title.replace(/^✦ /, "")}`);
     setHistoryVersion((v) => v + 1);
-    setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files: { ...p.files, [r.file]: r.after } } : p)));
-    say("Draft written. Your notes are in History.", 8000, { label: "Undo", run: () => setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files: { ...p.files, [r.file]: r.before } } : p))) });
+    const oldAuthors = target.files[AUTHORS_FILE];
+    setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files: withAuthors(p.files, r.file, r.after, r.spans) } : p)));
+    say("Claude's writing is in the Draft. The text before is in History.", 8000, {
+      label: "Undo",
+      run: () => setProjects((list) => list.map((p) => {
+        if (p.id !== r.projectId) return p;
+        const files = { ...p.files, [r.file]: r.before };
+        if (oldAuthors === undefined) delete files[AUTHORS_FILE];
+        else files[AUTHORS_FILE] = oldAuthors;
+        return { ...p, files };
+      })),
+    });
   };
+  // The writer's edits move Claude's stretches; what they type becomes theirs.
+  const onClaudeSpans = (spans: Span[], doc: string) => {
+    const f = vFile("draft");
+    setProjects((list) => list.map((p) => (p.id === project.id && (p.files[f] ?? "") === doc ? { ...p, files: withAuthors(p.files, f, doc, spans) } : p)));
+  };
+  const claudeShown = useMemo(() => (isScript && layer === "draft" ? claudeIn(project.files, vFile("draft")) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isScript, layer, file, project.files[vFile("draft")], project.files[AUTHORS_FILE]]);
   const switchLayer = (l: Layer) => setLayer(l);
   // The writer (or Claude Code) already brought the versions in step by hand.
   const markInStep = () => {
@@ -669,7 +721,7 @@ export function App() {
   const sideOpen = prefs.sidePanel !== "hidden";
 
   return (
-    <div className={`app side-${prefs.sidePanel} ${prefs.showOutline ? "" : "no-outline"} m-${mobile}`}>
+    <div className={`app side-${prefs.sidePanel} ${prefs.showOutline ? "" : "no-outline"} ${prefs.showAuthors === false ? "no-authors" : ""} m-${mobile}`}>
       <header className="topbar">
         <div className="brand" title={`${theme.brand.name} ${theme.brand.product}`}>
           <img className="brand-logo" src={theme.brand.logo} alt={theme.brand.name} />
@@ -810,10 +862,15 @@ export function App() {
             )}
             {layer === "draft" && (() => {
               const n = findGaps(project.files[vFile("draft")] ?? "").length;
-              return n ? (
-                <button className="claude-go" disabled={!!busy} data-testid="write-gaps" title="Claude writes each {{ note }} as prose in your style; you review it first" onClick={() => void writeGaps()}>✦ Write {n} part{n === 1 ? "" : "s"}</button>
-              ) : (
-                <span className="muted toolbar-hint" title="Write {{ a note }} anywhere in the Draft, and ✦ Write turns it into prose">{"{{ note }}"} = Claude writes it</span>
+              return (
+                <div className="draft-tools">
+                  <select className="insert-menu together-menu" value="" aria-label="Write together" disabled={!!busy} data-testid="together-menu"
+                    onChange={(e) => { const k = e.target.value as Stretch; e.target.value = ""; if (k) setTogether({ stretch: k, direction: together?.direction ?? "" }); }}>
+                    <option value="">✦ Write together</option>
+                    {(Object.keys(STRETCHES) as Stretch[]).map((k) => <option key={k} value={k}>Next {STRETCHES[k].label.toLowerCase()} ({STRETCHES[k].short})</option>)}
+                  </select>
+                  {n > 0 && <button className="claude-go" disabled={!!busy} data-testid="write-gaps" title="Claude writes each {{ note }} as prose in your style; you review it first" onClick={() => void writeGaps()}>✦ Write {n} part{n === 1 ? "" : "s"}</button>}
+                </div>
               );
             })()}
           </div>
@@ -864,6 +921,8 @@ export function App() {
           onCursorLine={setCursorLine}
           jumpTo={jump}
           links={links}
+          claude={claudeShown}
+          onClaude={isScript && layer === "draft" ? onClaudeSpans : undefined}
           onOpenLink={openLink}
           onContext={setMenu}
         />
@@ -1020,23 +1079,49 @@ export function App() {
           </div>
         </div>
       )}
-      {filling && (
-        <div className="modal-back" onClick={() => setFilling(null)}>
+      {together && (
+        <div className="modal-back" onClick={() => setTogether(null)}>
+          <div className="modal together" role="dialog" aria-label="Write together" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>✦ Write together</h2>
+              <button className="icon" onClick={() => setTogether(null)} aria-label="Close">✕</button>
+            </div>
+            <p className="muted">Claude reads your Draft and the sheets, and carries on from where it ends, in your style. You review it before it's added.</p>
+            <div className="seg" role="radiogroup" aria-label="How much">
+              {(Object.keys(STRETCHES) as Stretch[]).map((k) => (
+                <button key={k} role="radio" aria-checked={together.stretch === k} className={together.stretch === k ? "on" : ""} onClick={() => setTogether({ ...together, stretch: k })}>
+                  {STRETCHES[k].label}<span className="muted"> · {STRETCHES[k].short}</span>
+                </button>
+              ))}
+            </div>
+            <label className="together-dir">
+              <span>Where should it go? <span className="muted">Optional</span></span>
+              <textarea rows={3} value={together.direction} placeholder="Limo lies about the coat; Tony doesn't notice yet." onChange={(e) => setTogether({ ...together, direction: e.target.value })} />
+            </label>
+            <div className="modal-actions">
+              <button onClick={() => setTogether(null)}>Cancel</button>
+              <button className="primary" data-testid="together-go" onClick={() => { const t = together; setTogether(null); void writeTogether(t.stretch, t.direction); }}>✦ Write</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {writing && (
+        <div className="modal-back" onClick={() => setWriting(null)}>
           <div className="modal wide" role="dialog" aria-label="Review Claude's writing" onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
-              <h2>✦ Write {filling.count} part{filling.count === 1 ? "" : "s"} of the Draft</h2>
-              <button className="icon" onClick={() => setFilling(null)} aria-label="Close">✕</button>
+              <h2>{writing.title}</h2>
+              <button className="icon" onClick={() => setWriting(null)} aria-label="Close">✕</button>
             </div>
-            <p className="muted">Green lines are Claude's writing, red lines are your notes. Nothing changes until you accept; your notes go to History.</p>
+            <p className="muted">Green lines are Claude's writing{writing.after.includes("{{") || writing.before.includes("{{") ? ", red lines are your notes" : ""}. Nothing changes until you accept; the text before goes to History.</p>
             <div className="diff review-diff" ref={(el) => el?.querySelector(".diff-del, .diff-add")?.scrollIntoView({ block: "center" })}>
-              {lineDiff(filling.before, filling.after).map((l, k) => (
+              {lineDiff(writing.before, writing.after).map((l, k) => (
                 <div key={k} className={`diff-${l.op}`}>{l.op === "add" ? "+ " : l.op === "del" ? "− " : "  "}{l.text || " "}</div>
               ))}
             </div>
             <div className="modal-actions">
-              <button onClick={() => setFilling(null)}>Not now</button>
-              <button onClick={() => { setFilling(null); void writeGaps(); }}>Try again</button>
-              <button className="primary" data-testid="fill-accept" onClick={() => acceptFill(filling)}>Accept</button>
+              <button onClick={() => setWriting(null)}>Not now</button>
+              <button onClick={() => { const r = writing; setWriting(null); r.retry(); }}>Try again</button>
+              <button className="primary" data-testid="fill-accept" onClick={() => acceptWriting(writing)}>Accept</button>
             </div>
           </div>
         </div>
@@ -1174,6 +1259,7 @@ function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, setModel, 
             <input type="range" min={12} max={22} value={prefs.editorSize} onChange={(e) => setPrefs({ ...prefs, editorSize: Number(e.target.value) })} />
           </label>
           <label>Show outline<input type="checkbox" checked={prefs.showOutline} onChange={(e) => setPrefs({ ...prefs, showOutline: e.target.checked })} /></label>
+          <label title="In the Draft, text Claude wrote shows in Claude's colour until you edit it">Show who wrote what<input type="checkbox" checked={prefs.showAuthors !== false} onChange={(e) => setPrefs({ ...prefs, showAuthors: e.target.checked })} /></label>
           <label>Wrap long lines<input type="checkbox" checked={prefs.wrap} onChange={(e) => setPrefs({ ...prefs, wrap: e.target.checked })} /></label>
         </div>
         <h3>Claude</h3>

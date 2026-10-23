@@ -145,6 +145,16 @@ on the Draft tab has Claude write each one as prose in the style of the text aro
 using the sheets. The result is shown as a diff to accept; the notes go to History. Until
 it is written, ✦ Update carries a note to Play as `// write: note`.
 
+**Write together.** On the Draft tab, **✦ Write together** has Claude continue the Draft
+from where it ends: the next page (about 300 words), part (a scene, about 1,200) or
+chapter (about 4,000), with an optional direction. It is reviewed like ✦ Write.
+
+**Who wrote what.** Text Claude wrote (✦ Write, Write together) shows in Claude's colour,
+and names on sheets are bold, so both read in either colour. Whatever the writer types
+inside Claude's text becomes theirs. `intent.authors.json` keeps Claude's stretches with
+their text, so they are found again after edits outside Intent. Settings → Show who wrote
+what turns the colour off.
+
 Claude uses the writer's own Anthropic API key (Settings → Claude; it stays on the device,
 never in the project). Lines Claude is unsure of get a check note. The Ren'Py export uses
 your Code version when it is in sync with Play.

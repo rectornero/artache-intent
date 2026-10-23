@@ -70,7 +70,7 @@ export async function readFolder(dir: string): Promise<Record<string, string>> {
     for (const e of await fs.readDir(rel ? `${dir}/${rel}` : dir)) {
       const name = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory && depth === 0 && !e.name.startsWith(".") && e.name !== "out") await read(name, 1);
-      else if (e.isFile && (e.name.endsWith(".intent") || e.name.endsWith(".sheet") || /\.(draft|rpy)$/.test(e.name) || name === "intent.json" || name === "intent.sync.json" || name === "intent.checks.json")) files[name] = await fs.readTextFile(`${dir}/${name}`);
+      else if (e.isFile && (e.name.endsWith(".intent") || e.name.endsWith(".sheet") || /\.(draft|rpy)$/.test(e.name) || name === "intent.json" || name === "intent.sync.json" || name === "intent.checks.json" || name === "intent.authors.json")) files[name] = await fs.readTextFile(`${dir}/${name}`);
     }
   };
   await read("", 0);

@@ -17,14 +17,27 @@ export function findGaps(text: string): Gap[] {
 
 /** The text with gap i replaced by fills[i]; a missing or empty fill keeps its note. */
 export function fillGaps(text: string, gaps: Gap[], fills: string[]): string {
+  return fillGapsAt(text, gaps, fills).text;
+}
+
+/** fillGaps, plus where each written part now sits and how far each old offset moved. */
+export function fillGapsAt(text: string, gaps: Gap[], fills: string[]): { text: string; written: { from: number; to: number }[]; map: (pos: number) => number } {
   let out = "";
   let at = 0;
+  const written: { from: number; to: number }[] = [];
+  const moves: { at: number; to: number; by: number }[] = [];
   gaps.forEach((g, i) => {
     const fill = fills[i]?.trim();
-    out += text.slice(at, g.from) + (fill ? fill : text.slice(g.from, g.to));
+    out += text.slice(at, g.from);
+    if (fill) {
+      written.push({ from: out.length, to: out.length + fill.length });
+      moves.push({ at: g.from, to: g.to, by: fill.length - (g.to - g.from) });
+    }
+    out += fill ? fill : text.slice(g.from, g.to);
     at = g.to;
   });
-  return out + text.slice(at);
+  const map = (pos: number) => pos + moves.filter((m) => m.to <= pos).reduce((n, m) => n + m.by, 0);
+  return { text: out + text.slice(at), written, map };
 }
 
 /** The text with gaps shown as numbered markers, for Claude to read in context. */
