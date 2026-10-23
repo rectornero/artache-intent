@@ -155,3 +155,19 @@ export function sheetLinks(get: () => LinkTarget[], open: (t: LinkTarget) => voi
   });
   return [plugin, click];
 }
+
+/** Marks every {{ note }}: a part of the Draft the writer left for Claude to write. */
+export function gapMarks(): Extension {
+  const build = (doc: { toString: () => string }): DecorationSet => {
+    const b = new RangeSetBuilder<Decoration>();
+    for (const m of doc.toString().matchAll(/\{\{[\s\S]*?\}\}/g)) {
+      b.add(m.index!, m.index! + m[0].length, Decoration.mark({ class: "cm-gap", attributes: { title: "Claude writes this part: ✦ Write" } }));
+    }
+    return b.finish();
+  };
+  return StateField.define<DecorationSet>({
+    create: (s) => build(s.doc),
+    update: (d, tr) => (tr.docChanged ? build(tr.state.doc) : d),
+    provide: (f) => EditorView.decorations.from(f),
+  });
+}

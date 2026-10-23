@@ -5,7 +5,7 @@ import { slug } from "../src/core/parser.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
 import { Editor } from "./Editor.tsx";
 import { toLayer, type Layer } from "../src/core/layers.ts";
-import { CLAUDE_MODELS, checkJob, explainFailure, loadApiKey, loadModel, loadVia, promptJob, runJob, saveApiKey, saveModel, saveVia, updateJob, type ClaudeModel, type ClaudeVia, type Job } from "./claude.ts";
+import { CLAUDE_MODELS, checkJob, explainFailure, fillJob, loadApiKey, loadModel, loadVia, promptJob, runJob, saveApiKey, saveModel, saveVia, updateJob, type ClaudeModel, type ClaudeVia, type Job } from "./claude.ts";
 import { HandoffModal } from "./HandoffModal.tsx";
 import { ChecksPanel } from "./ChecksPanel.tsx";
 import { CHECKS_FILE, mergeRun, readChecks, writeChecks } from "../src/core/checks.ts";
@@ -20,6 +20,7 @@ const VERSION_NAMES: Record<Version, string> = { draft: "Draft", play: "Play", r
 const DRAFT_HINT = "Write freely here, like a book.";
 import { parseScript } from "../src/core/parser.ts";
 import { BookView, PreviewNodes } from "./Preview.tsx";
+import { fillGaps, findGaps, markGaps } from "../src/core/fill.ts";
 import { SheetForm, isStub } from "./SheetForm.tsx";
 import { Icon } from "./Icon.tsx";
 import { HistoryPanel } from "./HistoryPanel.tsx";
@@ -101,6 +102,7 @@ export function App() {
     const r = e.currentTarget.getBoundingClientRect();
     setPopMenu({ x: r.left, y: r.bottom + 4, items });
   };
+  const [filling, setFilling] = useState<{ projectId: string; file: string; before: string; after: string; count: number } | null>(null);
   const [reviewing, setReviewing] = useState<{ projectId: string; play: string; from: Version; to: Version; before: string; after: string; fromText: string } | null>(null);
 
   useEffect(() => {
@@ -340,6 +342,32 @@ export function App() {
     setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files } : p)));
     setReviewing(null);
     say(`${VERSION_NAMES[r.to]} updated.`, 8000, { label: "Undo", run: () => setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files: { ...p.files, [f]: r.before } } : p))) });
+  };
+  // ✦ Write: Claude writes the {{ }} parts of the Draft, then review before it changes.
+  const writeGaps = async () => {
+    if (!ok || busy) return;
+    const f = vFile("draft");
+    const before = project.files[f] ?? "";
+    const gaps = findGaps(before);
+    if (!gaps.length) return;
+    let parts: string[];
+    try {
+      parts = await askClaude(fillJob(markGaps(before, gaps), gaps.length, ok.config, ok.sheets.map((x) => x.sheet)));
+    } catch (e) {
+      if (e === CANCELLED) return;
+      return say(`Claude couldn't write it: ${explainFailure(e)}. Nothing changed.`, 8000);
+    }
+    setFilling({ projectId: project.id, file: f, before, after: fillGaps(before, gaps, parts), count: parts.filter((x) => x.trim()).length });
+  };
+  const acceptFill = (r: NonNullable<typeof filling>) => {
+    const target = projects.find((p) => p.id === r.projectId);
+    setFilling(null);
+    if (!target) return;
+    if ((target.files[r.file] ?? "") !== r.before) return say("The Draft changed while Claude was writing, so nothing was applied. Press ✦ Write again.", 8000);
+    saveSnapshot(r.projectId, r.file, r.before, "Before ✦ Write (your notes)");
+    setHistoryVersion((v) => v + 1);
+    setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files: { ...p.files, [r.file]: r.after } } : p)));
+    say("Draft written. Your notes are in History.", 8000, { label: "Undo", run: () => setProjects((list) => list.map((p) => (p.id === r.projectId ? { ...p, files: { ...p.files, [r.file]: r.before } } : p))) });
   };
   const switchLayer = (l: Layer) => setLayer(l);
   // The writer (or Claude Code) already brought the versions in step by hand.
@@ -780,6 +808,14 @@ export function App() {
                 <option value="mv">MV code block</option>
               </select>
             )}
+            {layer === "draft" && (() => {
+              const n = findGaps(project.files[vFile("draft")] ?? "").length;
+              return n ? (
+                <button className="claude-go" disabled={!!busy} data-testid="write-gaps" title="Claude writes each {{ note }} as prose in your style; you review it first" onClick={() => void writeGaps()}>✦ Write {n} part{n === 1 ? "" : "s"}</button>
+              ) : (
+                <span className="muted toolbar-hint" title="Write {{ a note }} anywhere in the Draft, and ✦ Write turns it into prose">{"{{ note }}"} = Claude writes it</span>
+              );
+            })()}
           </div>
         )}
         {isScript && states.some(({ s }) => !s.missing && !inSync(s)) && (
@@ -981,6 +1017,27 @@ export function App() {
                 ))}
               </>
             )}
+          </div>
+        </div>
+      )}
+      {filling && (
+        <div className="modal-back" onClick={() => setFilling(null)}>
+          <div className="modal wide" role="dialog" aria-label="Review Claude's writing" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>✦ Write {filling.count} part{filling.count === 1 ? "" : "s"} of the Draft</h2>
+              <button className="icon" onClick={() => setFilling(null)} aria-label="Close">✕</button>
+            </div>
+            <p className="muted">Green lines are Claude's writing, red lines are your notes. Nothing changes until you accept; your notes go to History.</p>
+            <div className="diff review-diff" ref={(el) => el?.querySelector(".diff-del, .diff-add")?.scrollIntoView({ block: "center" })}>
+              {lineDiff(filling.before, filling.after).map((l, k) => (
+                <div key={k} className={`diff-${l.op}`}>{l.op === "add" ? "+ " : l.op === "del" ? "− " : "  "}{l.text || " "}</div>
+              ))}
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setFilling(null)}>Not now</button>
+              <button onClick={() => { setFilling(null); void writeGaps(); }}>Try again</button>
+              <button className="primary" data-testid="fill-accept" onClick={() => acceptFill(filling)}>Accept</button>
+            </div>
           </div>
         </div>
       )}

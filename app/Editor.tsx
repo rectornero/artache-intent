@@ -5,7 +5,7 @@ import { EditorView, highlightActiveLine, keymap, lineNumbers } from "@codemirro
 import { json } from "./jsonMode.ts";
 import { useEffect, useRef } from "react";
 import type { Diagnostic } from "../src/core/ast.ts";
-import { intentLanguage, intentLinter, layerStripes, refreshLinks, sheetLinks, type LinkTarget } from "./intentMode.ts";
+import { gapMarks, intentLanguage, intentLinter, layerStripes, refreshLinks, sheetLinks, type LinkTarget } from "./intentMode.ts";
 
 interface Props {
   docKey: string;
@@ -47,7 +47,7 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
           history(),
           highlightActiveLine(),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-          isJson ? json() : [intentLanguage(), layerStripes(), intentLinter(() => diags.current), sheetLinks(() => linkRef.current, (t) => openRef.current?.(t))],
+          isJson ? json() : [intentLanguage(), layerStripes(), gapMarks(), intentLinter(() => diags.current), sheetLinks(() => linkRef.current, (t) => openRef.current?.(t))],
           wrapComp.current.of(wrap ? EditorView.lineWrapping : []),
           EditorView.domEventHandlers({
             contextmenu(e, view) {

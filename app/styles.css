@@ -512,3 +512,8 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .asset-unused summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .asset-unused ul { margin: 6px 0 0; padding-left: 18px; font-size: 12px; }
 .assets > .seg { align-self: flex-start; }
+
+/* {{ note }}: a Draft part left for Claude to write */
+.editor .cm-gap { background: color-mix(in srgb, var(--accent) 12%, transparent); border-bottom: 1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent); border-radius: 4px; font-style: italic; }
+.toolbar .toolbar-hint { order: 99; margin-left: auto; font-size: 12px; white-space: nowrap; }
+@media (max-width: 640px) { .toolbar .toolbar-hint { display: none; } }

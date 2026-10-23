@@ -85,6 +85,7 @@ Rules:
 - Play to Draft: write new script lines as prose in the style of the surrounding draft ("“Line,” Tony says."). Stage directions become short prose only when the draft already describes such things; otherwise leave them out.
 - Play to Code and back: follow how the existing code renders each kind of line.
 - If the version to update is empty, write it in full from the changed version.
+- Draft to Play: a {{ note }} in the Draft is a part the writer left for Claude to write later; put it in Play as a comment line "// write: note" and don't write the part.
 - Where you can't be sure, add a note line just above: "// check: why" in Play, "# check: why" in Code, "[check: why]" in Draft.
 
 Intent Script reference:
@@ -215,6 +216,37 @@ export function updateJob(req: UpdateRequest, cfg: ProjectConfig, sheets: Sheet[
 
 /** The updated text of `to`. Throws on any failure; nothing is changed then. */
 export const claudeUpdate = (apiKey: string, model: ClaudeModel, req: UpdateRequest, cfg: ProjectConfig, sheets: Sheet[]) => runJob(apiKey, model, updateJob(req, cfg, sheets));
+
+const FILL_SYSTEM = `You help a game writer finish the Draft of a visual novel or RPG scene. The Draft is prose. The writer wrote some parts in full and left others as short notes, marked <write n="…">note</write>, for you to write.
+
+Write each marked part as prose that:
+- does what the note says, and no more: don't resolve plot points the note doesn't ask for;
+- fits exactly where it stands, flowing from the text before it into the text after it;
+- matches the writer's own style around it: tense, person, sentence length, how dialogue is tagged ("“Line,” Tony says."), and how much description there is;
+- keeps every character true to their sheet: names, nicknames, gender, voice, what they know;
+- respects any length the note gives ("about 300 words", "two lines"); otherwise keep it as long as the scene around it suggests.
+
+Return one text per marked part, in order, without the tags and without repeating the writer's text around it.`;
+
+/** Write the {{ }} parts of a Draft; the answer is one text per gap, in order. */
+export function fillJob(marked: string, count: number, cfg: ProjectConfig, sheets: Sheet[]): Job<string[]> {
+  const read = (list: unknown) => (Array.isArray(list) ? list.map((x) => String(x ?? "")) : []);
+  return {
+    title: `Write ${count} part${count === 1 ? "" : "s"} of the Draft`,
+    system: FILL_SYSTEM,
+    content: [context(cfg, sheets), `<draft>\n${marked}\n</draft>`, `Write the ${count} marked part${count === 1 ? "" : "s"}.`].join("\n\n"),
+    schema: { type: "object", properties: { parts: { type: "array", items: { type: "string" } } }, required: ["parts"], additionalProperties: false },
+    effort: "medium",
+    maxTokens: 32000,
+    thinking: true,
+    read: (d) => read((d as { parts: unknown }).parts),
+    pasteAs: `Each part in order, each inside its own fenced code block (\`\`\`text … \`\`\`), numbered like the marks: part 1 first.`,
+    readPasted: (a) => {
+      const blocks = [...a.matchAll(/```[\w-]*[^\S\n]*\n([\s\S]*?)\n?```/g)].map((m) => m[1]);
+      return blocks.length ? blocks : [a.trim()];
+    },
+  };
+}
 
 const PROMPT_SYSTEM = `You write prompts for generative tools from a game writer's sheet.
 - Image prompts are for an image generator: one paragraph, concrete and visual (subject, look, clothing, pose or framing, setting, light, colour, mood). Characters: a visual novel character sprite, full body, plain background unless the sheet says otherwise. Places: a visual novel background, no people unless the sheet says so. No camera brand names, no artist names.
