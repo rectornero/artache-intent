@@ -2,6 +2,13 @@
 
 Artache Intent Writer, the writing program of the Artache Intent suite.
 
+## 0.6.1 "Vellum" (2026-10-23)
+
+- The Draft no longer colours a name before ":" (or a leading "-" or "(…)") as a speaker:
+  it is prose. Play keeps its script colours.
+- Text goes up to 72 px, in bigger steps at bigger sizes.
+- A− and A+ in the top bar, on desktop and phone.
+
 ## 0.6.0 "Vellum" (2026-10-23)
 
 A usability round. The feeling of writing comes first.

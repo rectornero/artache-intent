@@ -676,3 +676,7 @@ body.resizing .editor, body.resizing .panel { pointer-events: none; }
 .form-grid label.font-pick { grid-column: span 2; }
 .form-grid label.font-pick select { width: auto; flex: 1; max-width: 320px; }
 @media (max-width: 820px) { .form-grid label.font-pick { grid-column: 1 / -1; } }
+.text-size { display: flex; gap: 0; }
+.text-size button.icon { font-size: 13px; font-weight: 700; width: 32px; color: var(--muted); }
+.text-size button.icon:hover { color: var(--text); }
+@media (max-width: 820px) { .text-size button.icon { width: 30px; } }

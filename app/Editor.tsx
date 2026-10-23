@@ -84,7 +84,7 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
           history(),
           highlightActiveLine(),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-          isJson ? json() : [intentLanguage(), layerStripes(), withLevels ? [choicesField, intentLevels((at) => pickRef.current?.(at))] : [], claudeSpansField, intentLinter(() => diags.current), sheetLinks(() => linkRef.current, (t) => openRef.current?.(t))],
+          isJson ? json() : [intentLanguage(withFormat), layerStripes(), withLevels ? [choicesField, intentLevels((at) => pickRef.current?.(at))] : [], claudeSpansField, intentLinter(() => diags.current), sheetLinks(() => linkRef.current, (t) => openRef.current?.(t))],
           withFormat ? formatting() : [],
           wrapComp.current.of(wrap ? EditorView.lineWrapping : []),
           // No spellcheck or autocorrect: nothing changes or marks the writer's words on its own.

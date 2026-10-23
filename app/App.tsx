@@ -255,7 +255,12 @@ export function App() {
   };
   const openLink = (t: LinkTarget) => (t.stub ? fx.createSheet(t.kind as SheetKind, t.name) : openSheet(t.file));
 
-  const textSize = (by: number) => setPrefs((p) => ({ ...p, editorSize: Math.min(TEXT_SIZES.max, Math.max(TEXT_SIZES.min, p.editorSize + by)) }));
+  // Bigger steps at bigger sizes, so 72px is a few taps away.
+  const textSize = (by: number) => setPrefs((p) => {
+    const from = by > 0 ? p.editorSize : p.editorSize - 1;
+    const step = from < 20 ? 1 : from < 36 ? 2 : 4;
+    return { ...p, editorSize: Math.min(TEXT_SIZES.max, Math.max(TEXT_SIZES.min, p.editorSize + by * step)) };
+  });
   const showFiles = prefs.showFiles !== false;
   const togglePanel = () => setPrefs((p) => (p.sidePanel === "hidden" ? { ...p, sidePanel: p.panelLast ?? "right" } : { ...p, panelLast: p.sidePanel, sidePanel: "hidden" }));
   // Dragging the edge of the files column or the panel: the size follows the pointer and is remembered.
@@ -519,6 +524,10 @@ export function App() {
           ))}
         </select>
         <div className="spacer" />
+        <div className="text-size" role="group" aria-label="Text size">
+          <button className="icon" onClick={() => textSize(-1)} aria-label="Smaller text" title="Smaller text (Ctrl+−)" data-testid="text-smaller">A−</button>
+          <button className="icon" onClick={() => textSize(1)} aria-label="Bigger text" title="Bigger text (Ctrl+=)" data-testid="text-bigger">A+</button>
+        </div>
         <div className="view-toggles wide-only" role="group" aria-label="What you see">
           <button className={`icon ${showFiles ? "on" : ""}`} onClick={() => setPrefs((p) => ({ ...p, showFiles: !showFiles }))} aria-pressed={showFiles} aria-label="Files column" title={showFiles ? "Hide the files column" : "Show the files column"}>
             <Icon name="files" size={17} />
