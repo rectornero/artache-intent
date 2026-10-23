@@ -8,7 +8,18 @@ export default defineConfig({
   base: "./",
   plugins: [react()],
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
-  build: { outDir: "../dist", emptyOutDir: true, target: "es2022" },
+  build: {
+    outDir: "../dist",
+    emptyOutDir: true,
+    target: "es2022",
+    // React and the editor change rarely: their own files stay cached across app updates.
+    rollupOptions: {
+      output: {
+        manualChunks: (id) =>
+          /node_modules\/(react|react-dom|scheduler)\//.test(id) ? "react" : /node_modules\/(@codemirror|@lezer|codemirror|style-mod|w3c-keyname|crelt)\//.test(id) ? "editor" : undefined,
+      },
+    },
+  },
   server: { port: 5173, strictPort: true },
   clearScreen: false,
 });

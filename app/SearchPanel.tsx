@@ -18,6 +18,7 @@ interface Props {
 export function fileLabel(file: string, text: string): string {
   const s = scopeOf(file);
   if (s === "sheets") return parseSheet(text)?.name ?? file;
+  if (file.endsWith(".mv.json")) return `${file.replace(/\.mv\.json$/, ".intent")} · MV`;
   if (s === "draft" || s === "renpy") return `${file.replace(/\.\w+$/, ".intent")} · ${SCOPE_NAMES[s]}`;
   return file;
 }

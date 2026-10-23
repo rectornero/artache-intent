@@ -119,8 +119,8 @@ and common event ids, known ids by name).
 
 ## Sheets (0.2)
 
-A sheet is one plain-text file per Character, Place, Item or Minigame, kept in
-`characters/`, `places/`, `items/` or `minigames/`. The app shows it as a form.
+A sheet is one plain-text file per Character, Place, Item, Minigame or Clue, kept in
+`characters/`, `places/`, `items/`, `minigames/` or `clues/`. The app shows it as a form.
 
 ```
 @character Tony
@@ -169,7 +169,7 @@ appearance: Forties, ironed shirt.
 expressions: neutral, nervous
 ```
 
-- First line: `@character|@place|@item|@minigame Name`. Then `key: value` lines;
+- First line: `@character|@place|@item|@minigame|@clue Name`. Then `key: value` lines;
   indented lines continue the value above. `##` headings are only for reading.
 - Character sheets join the cast (cast key = `id` or the name in capitals);
   nicknames become aliases. Place sheets add backgrounds under every name.
@@ -184,6 +184,68 @@ expressions: neutral, nervous
 - Fields with a short list of answers (gender, role, entrance side, setting, mood,
   item type, minigame type and difficulty) are dropdowns in the form; some also take
   a value of your own. An old `pronouns:` line is read as gender.
+
+**MV version (0.4).** Projects that export to RPG Maker MV (`targets` includes `"mv"`)
+get a fourth tab, **MV**: the script's common events as JSON (`cap1.mv.json`), one event
+command per line, for hand-tuning the way Code is for Ren'Py. It pairs with Play like Code
+does (dot, bar, ✦ Update; an MV nobody edited is rewritten by Intent with no Claude). The
+file also keeps every event, switch and variable name its ids stood for, so Export puts a
+hand-tuned MV back by name: each event takes the id the export gives that name, and
+switches, variables and calls to other events follow their names even after other scripts
+moved the ids on. Export uses the MV version only while it is in step with Play; one that
+isn't valid JSON is skipped, and the MV report says so.
+
+**Word count and goals (0.4).** Under the text: words in this Draft or Play (what is said
+and narrated, not directions), the whole project (each script's Draft, or its Play where
+there is none), and words typed today on this device. **Set goals** keeps a project goal
+and a daily goal in `intent.json` (`"goals": { "words": 80000, "daily": 500 }`); meters fill
+and a toast marks the daily goal. A Draft made from Play, and Claude's writing, don't count
+as typed. Settings → Word count hides the line.
+
+**Spellcheck (0.4).** The Draft and Play use the device's own spellcheck; Settings →
+Spellcheck turns it off or picks a language. Code and MV are never spellchecked.
+
+**Manuscript (0.4).** Export → Manuscript puts every script's Draft, in file order, into one
+manuscript as a Word file or a PDF: a title page with the author and word count, Times
+12 pt, double-spaced, first-line indents, chapters (`#`) on new pages, scenes (`##`)
+separated by `#` or shown with their titles, and a running header with the page number,
+on A4 or US Letter. Script lines, comments and `{{ notes }}` are left out; a script with no
+Draft yet uses its Play as prose. The author is kept in `intent.json` (`"author"`).
+
+**Playtest (0.4, Windows app).** ▶ Playtest writes the Ren'Py export into the linked game's
+`game/` folder (the one Export → Assets links) and starts the Ren'Py SDK on it. It asks for
+the game folder and for the SDK's `renpy.exe` the first time; Settings → Playtest forgets
+the SDK.
+
+## Mystery kit (0.4)
+
+- **Clue sheets** (`@clue Name`, in `clues/`): type, what it is, *points to* (who or
+  what it seems to accuse), *what it really means*, *red herring* (No, Yes, Partly),
+  *found at*, *known by* (characters, comma separated), and where it is planted and
+  revealed. An Item whose type is Clue or Evidence counts as a clue too.
+- **Character sheets** have a Mystery section: *alibi*, *does the alibi hold?*
+  (Unchecked, Holds, Shaky, False) and *knows* (what they know, and when they learn it).
+- **Tools → Clues** is the clue board, worked out from the sheets and scripts and never
+  stored. By clue: what it points to, its real meaning, who knows it, and every scene
+  that mentions it (the first one marked), each a link. By suspect: alibi, whether it
+  holds, what they know, and the clues against them. Suspects are characters with the
+  role Suspect, Antagonist, Witness or Victim, an alibi, or a clue pointing at them.
+- *Still open* lists what looks unfinished: a clue no script mentions, a clue that
+  points to nobody, a red herring with no real meaning written down, a *known by* name
+  with no character sheet, and a suspect with no alibi or no clue against them.
+
+## Writer's toolbar (0.4)
+
+A row of buttons above the Draft and Play: **Character, Place, Item, Clue, Minigame**,
+and in Play **Interaction**. Each lists that kind's sheets, plus *New…*, which makes the
+sheet and inserts it. In the Draft a sheet goes in as its name ("the Lockpick minigame"
+for a minigame). In Play it goes in the way Intent Script writes it, on its own line: a
+character starts a line they speak (`TONY: `), a place a `[BG Stairwell]`, a clue a
+`+ evidence: wet_coat`, a minigame a `>> MINIGAME: Lockpick`; an item goes in as its name.
+**Interaction** starts a choice, a condition, a `@talk`, an `@event`, or one of the
+project's own blocks from `intent.json` (`>> INVESTIGATE`, `>> MIND`, …) with a template
+to fill in. Everything inserted is an ordinary edit (Ctrl+Z takes it back). Settings →
+Writer's toolbar hides the row.
 
 ## Find, replace and rename (0.3)
 

@@ -7,6 +7,8 @@ import { useEffect, useRef } from "react";
 import type { Diagnostic } from "../src/core/ast.ts";
 import { claudeSpansField, gapMarks, intentLanguage, setClaudeSpans, intentLinter, layerStripes, refreshLinks, sheetLinks, type LinkTarget } from "./intentMode.ts";
 
+export type Insertion = { text: string; block?: boolean; n: number };
+
 interface Props {
   docKey: string;
   value: string;
@@ -16,6 +18,10 @@ interface Props {
   onChange: (v: string) => void;
   onCursorLine: (line: number) => void;
   jumpTo: { line: number; n: number } | null;
+  /** The device's spellcheck in this language ("" for the device's own), or off. */
+  spellcheck?: string | false;
+  /** Text to put in at the cursor: inline, or as lines of its own (`block`). */
+  insert?: Insertion | null;
   links?: LinkTarget[];
   onOpenLink?: (t: LinkTarget) => void;
   /** Right-click or long-press: the selection, or the linked name or word under the pointer. */
@@ -25,12 +31,15 @@ interface Props {
   onClaude?: (spans: { from: number; to: number }[], doc: string) => void;
 }
 
-export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, jumpTo, links = [], onOpenLink, onContext, claude, onClaude }: Props) {
+export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onCursorLine, jumpTo, insert, spellcheck = false, links = [], onOpenLink, onContext, claude, onClaude }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const diags = useRef(diagnostics);
   const cb = useRef({ onChange, onCursorLine });
   const wrapComp = useRef(new Compartment());
+  const spellComp = useRef(new Compartment());
+  const spellAttrs = (on: string | false) =>
+    EditorView.contentAttributes.of(on === false || isJson ? { spellcheck: "false" } : { spellcheck: "true", autocorrect: "on", autocapitalize: "sentences", ...(on ? { lang: on } : {}) });
   const linkRef = useRef(links);
   const openRef = useRef(onOpenLink);
   diags.current = diagnostics;
@@ -54,6 +63,7 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           isJson ? json() : [intentLanguage(), layerStripes(), gapMarks(), claudeSpansField, intentLinter(() => diags.current), sheetLinks(() => linkRef.current, (t) => openRef.current?.(t))],
           wrapComp.current.of(wrap ? EditorView.lineWrapping : []),
+          spellComp.current.of(spellAttrs(spellcheck)),
           EditorView.domEventHandlers({
             contextmenu(e, view) {
               if (!ctxRef.current || isJson) return false;
@@ -92,6 +102,11 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
     view.current?.dispatch({ effects: wrapComp.current.reconfigure(wrap ? EditorView.lineWrapping : []) });
   }, [wrap]);
 
+  useEffect(() => {
+    view.current?.dispatch({ effects: spellComp.current.reconfigure(spellAttrs(spellcheck)) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spellcheck]);
+
   // Changes made outside the editor (convert, insert block) replace the text in place.
   useEffect(() => {
     const v = view.current;
@@ -124,6 +139,30 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
     v.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });
     v.focus();
   }, [jumpTo]);
+
+  // The writer's toolbar: the text goes in as the writer's own edit, so Ctrl+Z takes it back.
+  const inserted = useRef(insert?.n);
+  useEffect(() => {
+    const v = view.current;
+    // Only new requests: a remounted editor doesn't repeat the last one.
+    if (!v || !insert || insert.n === inserted.current) return;
+    inserted.current = insert.n;
+    const sel = v.state.selection.main;
+    let from = sel.from, to = sel.to, text = insert.text;
+    if (insert.block) {
+      // On an empty line, fill it; otherwise start a new line after the cursor's line.
+      const line = v.state.doc.lineAt(sel.head);
+      if (line.text.trim()) {
+        from = to = line.to;
+        text = `\n${text}`;
+      } else {
+        from = line.from;
+        to = line.to;
+      }
+    }
+    v.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, scrollIntoView: true, userEvent: "input" });
+    v.focus();
+  }, [insert]);
 
   return <div className="editor" ref={host} data-testid="editor" />;
 }

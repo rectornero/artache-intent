@@ -1,7 +1,7 @@
 // Projects live in the browser (or the app's webview) by default. On desktop and
 // Android the Tauri build can also open and save a real folder.
 
-import JSZip from "jszip";
+import { VERSION_FILE } from "../src/core/sync.ts";
 
 export interface Project {
   id: string;
@@ -70,12 +70,12 @@ export async function readFolder(dir: string): Promise<Record<string, string>> {
     for (const e of await fs.readDir(rel ? `${dir}/${rel}` : dir)) {
       const name = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory && depth === 0 && !e.name.startsWith(".") && e.name !== "out") await read(name, 1);
-      else if (e.isFile && (e.name.endsWith(".intent") || e.name.endsWith(".sheet") || /\.(draft|rpy)$/.test(e.name) || name === "intent.json" || name === "intent.sync.json" || name === "intent.checks.json" || name === "intent.authors.json")) files[name] = await fs.readTextFile(`${dir}/${name}`);
+      else if (e.isFile && (e.name.endsWith(".intent") || e.name.endsWith(".sheet") || VERSION_FILE.test(e.name) || name === "intent.json" || name === "intent.sync.json" || name === "intent.checks.json" || name === "intent.authors.json")) files[name] = await fs.readTextFile(`${dir}/${name}`);
     }
   };
   await read("", 0);
-  // Draft and Code versions only belong to a script next to them; other .rpy files aren't Intent's.
-  for (const n of Object.keys(files)) if (/\.(draft|rpy)$/.test(n) && files[n.replace(/\.(draft|rpy)$/, ".intent")] === undefined) delete files[n];
+  // Versions only belong to a script next to them; other .rpy or .json files aren't Intent's.
+  for (const n of Object.keys(files)) if (VERSION_FILE.test(n) && files[n.replace(VERSION_FILE, ".intent")] === undefined) delete files[n];
   return files;
 }
 
@@ -130,6 +130,21 @@ export async function saveFileAs(name: string, text: string): Promise<boolean> {
     return true;
   }
   download(base, new Blob([text], { type: "text/plain;charset=utf-8" }));
+  return true;
+}
+
+/** Save a made file (a manuscript): a save dialog in the app, a download in the browser. */
+export async function saveBinaryAs(name: string, data: Uint8Array, type: { label: string; ext: string; mime: string }): Promise<boolean> {
+  const base = `${name.replace(/[\\/:*?"<>|]+/g, "").trim() || "manuscript"}.${type.ext}`;
+  if (isTauri()) {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const fs = await import("@tauri-apps/plugin-fs");
+    const path = await save({ defaultPath: base, filters: [{ name: type.label, extensions: [type.ext] }] });
+    if (!path) return false;
+    await fs.writeFile(path, data);
+    return true;
+  }
+  download(base, new Blob([data as BlobPart], { type: type.mime }));
   return true;
 }
 
@@ -197,6 +212,7 @@ export async function deliverExport(name: string, files: Record<string, string>)
     }
     return;
   }
+  const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
   for (const [path, text] of Object.entries(files)) zip.file(path, text);
   download(`${name.replace(/[^\w-]+/g, "-")}-export.zip`, await zip.generateAsync({ type: "blob" }));
@@ -273,6 +289,49 @@ export function pickFolderFiles(): Promise<Map<string, File> | null> {
     input.click();
   });
 }
+
+/** Android and other phones: the app runs, but some desktop things (Ren'Py) can't. */
+export const isPhone = () => typeof navigator !== "undefined" && /Android|iPhone|iPad/i.test(navigator.userAgent);
+
+const SDK_KEY = "intent.renpySdk";
+/**
+ * Playtest in Ren'Py (Windows app): write the Ren'Py export into the linked game's game/
+ * folder, then start the Ren'Py SDK on it. Asks once for each folder and remembers it.
+ */
+export async function playtestRenpy(project: string, files: Record<string, string>): Promise<"started" | "cancelled"> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const fs = await import("@tauri-apps/plugin-fs");
+  const { invoke } = await import("@tauri-apps/api/core");
+  let root = gameFolderOf(project);
+  if (!root) {
+    root = await pickFolder("Your Ren'Py game's folder (the one with game/ inside)");
+    if (!root) return "cancelled";
+    setGameFolder(project, root);
+  }
+  root = root.replace(/[\\/]+$/, "");
+  // The linked folder can be the game itself or its game/ folder.
+  const gameDir = /[\\/]game$/i.test(root) ? root : `${root}/game`;
+  const base = gameDir.replace(/[\\/]game$/i, "");
+  let sdk = safeGet(SDK_KEY);
+  if (!sdk || !(await fs.exists(sdk).catch(() => false))) {
+    const picked = await open({ title: "Find renpy.exe in your Ren'Py SDK folder", filters: [{ name: "Ren'Py", extensions: ["exe", "sh", "app"] }] });
+    if (typeof picked !== "string") return "cancelled";
+    sdk = picked;
+    safeSet(SDK_KEY, sdk);
+  }
+  await fs.mkdir(gameDir, { recursive: true });
+  for (const [path, text] of Object.entries(files)) {
+    if (!path.startsWith("renpy/") || path.endsWith(".md")) continue;
+    const full = `${gameDir}/${path.slice("renpy/".length)}`;
+    await fs.mkdir(full.slice(0, full.lastIndexOf("/")), { recursive: true });
+    await fs.writeTextFile(full, text);
+  }
+  await invoke("playtest", { renpy: sdk, project: base });
+  return "started";
+}
+
+/** Forget the Ren'Py SDK, so the next playtest asks for it again. */
+export const forgetRenpySdk = () => safeSet(SDK_KEY, "");
 
 const GAME_KEY = "intent.gameFolders";
 /** The game folder linked to each project, on this device only (paths differ between devices). */

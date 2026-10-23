@@ -1,9 +1,11 @@
 import type { Diagnostic, Script } from "./core/ast.ts";
 import { loadConfig, type ProjectConfig } from "./core/config.ts";
-import { parseScript } from "./core/parser.ts";
+import { parseScript, slug } from "./core/parser.ts";
 import { backgroundsFromSheets, castFromSheets, parseSheet, type Sheet } from "./core/sheets.ts";
 import { buildBible } from "./exporters/bible.ts";
-import { exportMv } from "./exporters/mv.ts";
+import { exportMv, type MvOutput } from "./exporters/mv.ts";
+import { withMvVersions } from "./core/mvVersion.ts";
+import { inSync, pairState, versionFile } from "./core/sync.ts";
 import { exportRenpy } from "./exporters/renpy.ts";
 import { reportMarkdown } from "./exporters/report.ts";
 
@@ -15,6 +17,8 @@ export interface CompileResult {
   diagnostics: Array<Diagnostic & { file: string }>;
   /** Output path -> file contents. */
   files: Record<string, string>;
+  /** The MV export as data, for MV versions of scripts. */
+  mv?: MvOutput;
 }
 
 /** Turn a project (settings + script files) into engine files. Pure: no disk access. */
@@ -24,7 +28,7 @@ export function compileProject(settings: unknown, sources: Record<string, string
   for (const [file, src] of Object.entries(sources).filter(([f]) => f.endsWith(".sheet"))) {
     const sheet = parseSheet(src);
     if (sheet) sheets.push({ file, sheet });
-    else sheetErrors.push({ level: "error", line: 1, message: "A sheet starts with @character, @place, @item or @minigame and a name", file });
+    else sheetErrors.push({ level: "error", line: 1, message: "A sheet starts with @character, @place, @item, @minigame or @clue and a name", file });
   }
   // Sheets fill the cast and backgrounds; anything written in intent.json wins.
   const s0 = (settings ?? {}) as Record<string, any>;
@@ -46,13 +50,36 @@ export function compileProject(settings: unknown, sources: Record<string, string
     for (const [name, text] of Object.entries(r.files)) files[`renpy/${name}`] = text;
     files["renpy/REPORT.md"] = reportMarkdown(`${config.name}: Ren'Py export`, r.report);
   }
+  let mv: MvOutput | undefined;
   if (want.includes("mv")) {
-    const m = exportMv(scripts, config);
+    const m = (mv = exportMv(scripts, config));
     files["mv/CommonEvents.intent.json"] = JSON.stringify(m.commonEvents, null, 1);
     files["mv/MapEvents.intent.json"] = JSON.stringify(m.mapEvents, null, 1);
     files["mv/System.intent.json"] = JSON.stringify({ switches: m.switches, variables: m.variables }, null, 2);
     files["mv/REPORT.md"] = reportMarkdown(`${config.name}: RPG Maker MV export`, m.report);
   }
   files["bible.json"] = JSON.stringify(buildBible(scripts), null, 2);
-  return { config, scripts, sheets, diagnostics, files };
+  return { config, scripts, sheets, diagnostics, files, mv };
+}
+
+/**
+ * What Export writes: the compiled files, with each script's Code and MV versions in
+ * their place where they are in step with Play (hand-tuned or not, they go out as they are).
+ */
+export function exportWithVersions(result: CompileResult, files: Record<string, string>): Record<string, string> {
+  const out = { ...result.files };
+  const mvTuned: Record<string, string> = {};
+  for (const f of Object.keys(files).filter((n) => n.endsWith(".intent"))) {
+    const code = files[versionFile(f, "renpy")];
+    if (code !== undefined && inSync(pairState(files, f, "play", "renpy"))) out[`renpy/${slug(f.replace(/\.[^.]+$/, ""))}.rpy`] = code;
+    const mv = files[versionFile(f, "mv")];
+    if (mv !== undefined && inSync(pairState(files, f, "play", "mv"))) mvTuned[f] = mv;
+  }
+  if (result.mv && Object.keys(mvTuned).length && out["mv/CommonEvents.intent.json"] !== undefined) {
+    const m = withMvVersions(result.mv, mvTuned);
+    out["mv/CommonEvents.intent.json"] = JSON.stringify(m.commonEvents, null, 1);
+    out["mv/System.intent.json"] = JSON.stringify({ switches: m.switches, variables: m.variables }, null, 2);
+    if (m.problems.length) out["mv/REPORT.md"] = `${out["mv/REPORT.md"] ?? ""}\n## MV versions\n\n${m.problems.map((p) => `- ${p}`).join("\n")}\n`;
+  }
+  return out;
 }

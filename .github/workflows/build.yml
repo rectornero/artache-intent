@@ -68,6 +68,9 @@ jobs:
           MA=$(find src-tauri/gen/android/app/src/main -name MainActivity.kt | head -1)
           { grep -m1 '^package ' "$MA"; echo; cat src-tauri/android/MainActivity.kt; } > "$MA.new" && mv "$MA.new" "$MA"
           cat "$MA"
+          # The launcher icon: init leaves Tauri's default, so put ours over it
+          # (scripts/android-icons.mjs renders these from intent-icon.svg).
+          cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
           # arm64 covers every current phone and keeps the APK small.
           npx tauri android build --apk --debug --ci --target aarch64
       - uses: actions/upload-artifact@v4

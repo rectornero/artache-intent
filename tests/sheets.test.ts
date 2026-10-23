@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { detectMinigames, newSheet, parseSheet, serializeSheet, sheetUsage } from "../src/core/sheets.ts";
+import { interactions, sheetSnippet } from "../src/core/insert.ts";
+import { clueBoard } from "../src/core/mystery.ts";
+import { detectMinigames, newSheet, parseSheet, serializeSheet, sheetFileName, sheetUsage } from "../src/core/sheets.ts";
 import { compileProject } from "../src/project.ts";
 
 const tony = "@character Tony\n\n## Identity\nnicknames: the neighbour\ngender: Male\n\n## Look\nexpressions: neutral, nervous\nappearance: Forties.\n  Ironed shirt.\n";
@@ -41,5 +43,51 @@ describe("sheets", () => {
   });
   it("reads an old pronouns line as gender", () => {
     expect(parseSheet("@character Juu\npronouns: she")!.fields).toEqual({ gender: "Female" });
+  });
+});
+
+describe("mystery kit", () => {
+  const coat = "@clue Wet coat\n\n## Mystery\npointsTo: Tony\nherring: Yes\nknownBy: Juu, Mara\n";
+  const knife = "@item Knife\ntype: Evidence\npointsTo: Juu\ntruth: Planted by Tony.\n";
+  const tonyS = "@character Tony\nrole: Suspect\nalibi: At the bar until ten.\nalibiHolds: Shaky\n";
+  const juu = "@character Juu\nrole: Witness\nknows: Saw the coat at nine.\n";
+
+  it("reads clue sheets and keeps their fields", () => {
+    const s = parseSheet(coat)!;
+    expect(s.kind).toBe("clue");
+    expect(s.fields.pointsTo).toBe("Tony");
+    expect(serializeSheet(s)).toContain("## Mystery");
+    expect(newSheet("clue", "Wet coat")).toBe("@clue Wet coat\n");
+    expect(sheetFileName("clue", "Wet coat")).toBe("clues/wet_coat.sheet");
+  });
+
+  it("builds the clue board with scenes, suspects and gaps", () => {
+    const r = compileProject({}, { "a.intent": "## Hall\nThe wet coat hangs by the door.\n## Bar\nTONY: I was here.\n", "clues/coat.sheet": coat, "items/knife.sheet": knife, "c/tony.sheet": tonyS, "c/juu.sheet": juu }, ["renpy"]);
+    const b = clueBoard(r.sheets, r.scripts);
+    expect(b.clues.map((c) => [c.name, c.kind, c.scenes.map((s) => s.title)])).toEqual([["Knife", "Evidence", []], ["Wet coat", "clue", ["Hall"]]]);
+    expect(b.suspects.map((s) => [s.name, s.clues])).toEqual([["Juu", ["Knife"]], ["Tony", ["Wet coat"]]]);
+    expect(b.warnings.map((w) => w.message)).toEqual([
+      "Knife never appears in a script yet.",
+      "Wet coat is a red herring, but its real meaning isn't written down.",
+      "Wet coat is known by Mara, who has no character sheet.",
+    ]);
+  });
+});
+
+describe("writer's toolbar", () => {
+  it("inserts a sheet the way each version writes it", () => {
+    const tony = parseSheet("@character Tony\nid: tony_v\n")!;
+    expect(sheetSnippet(tony, "play")).toEqual({ text: "TONY_V: ", block: true });
+    expect(sheetSnippet(tony, "draft")).toEqual({ text: "Tony", block: false });
+    expect(sheetSnippet(parseSheet("@place Stairwell\n")!, "play").text).toBe("[BG Stairwell]");
+    expect(sheetSnippet(parseSheet("@clue Wet coat\n")!, "play").text).toBe("+ evidence: wet_coat");
+    expect(sheetSnippet(parseSheet("@minigame Lockpick\n")!, "draft").text).toBe("the Lockpick minigame");
+  });
+
+  it("offers the project's own interaction blocks, but not drafts", () => {
+    const list = interactions({ INVESTIGATE: {}, CODES: {}, DRAFT: { export: false }, MINIGAME: {} });
+    expect(list.map((i) => i.label)).toEqual(["Choice", "Condition", "Talk", "Event", "Investigate", "Codes"]);
+    expect(list[4].text).toMatch(/^>> INVESTIGATE: /);
+    expect(list[5].text).toBe(">> CODES: header\n  - key: value");
   });
 });

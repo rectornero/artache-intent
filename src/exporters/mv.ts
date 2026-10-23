@@ -25,6 +25,8 @@ export interface MvCommonEvent {
 
 export interface MvOutput {
   commonEvents: MvCommonEvent[];
+  /** The script each common event came from, by event id. */
+  owners: Record<number, string>;
   mapEvents: Record<string, unknown>[];
   switches: Record<number, string>;
   variables: Record<number, string>;
@@ -453,15 +455,18 @@ export class MvExporter {
 
   output(): MvOutput {
     const flip = (m: Map<string, number>) => Object.fromEntries([...m].map(([n, id]) => [id, n]));
-    return { commonEvents: this.commonEvents, mapEvents: this.mapEvents, switches: flip(this.switches), variables: flip(this.variables), report: this.report };
+    return { commonEvents: this.commonEvents, owners: {}, mapEvents: this.mapEvents, switches: flip(this.switches), variables: flip(this.variables), report: this.report };
   }
 }
 
 export function exportMv(scripts: Script[], cfg: ProjectConfig): MvOutput {
   const ex = new MvExporter(cfg);
+  const owners: Record<number, string> = {};
   for (const s of scripts) {
     ex.narrator = cfg.narrator;
+    const before = ex.commonEvents.length;
     ex.script(s);
+    for (const ce of ex.commonEvents.slice(before)) owners[ce.id] = s.file;
   }
-  return ex.output();
+  return { ...ex.output(), owners };
 }

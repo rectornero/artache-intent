@@ -162,6 +162,12 @@ export interface UiPrefs {
   wrap: boolean;
   /** Draft: Claude's writing in its own colour. */
   showAuthors: boolean;
+  /** The writer's toolbar above Draft and Play. */
+  showWriterBar: boolean;
+  /** Word count and goals under the text. */
+  showWordCount: boolean;
+  /** The device's spellcheck in Draft and Play: off, the device's language (""), or a language code. */
+  spellcheck: string | false;
 }
 
 export const DEFAULT_PREFS: UiPrefs = {
@@ -172,6 +178,9 @@ export const DEFAULT_PREFS: UiPrefs = {
   showOutline: true,
   wrap: true,
   showAuthors: true,
+  showWriterBar: true,
+  showWordCount: true,
+  spellcheck: "",
 };
 
 export function activeTheme(p: UiPrefs): Theme {
