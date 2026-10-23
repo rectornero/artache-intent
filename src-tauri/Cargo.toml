@@ -1,6 +1,6 @@
 [package]
 name = "artache-intent"
-version = "0.3.1"
+version = "0.3.2"
 description = "Artache Intent: a script editor that exports to Ren'Py and RPG Maker MV"
 edition = "2021"
 
