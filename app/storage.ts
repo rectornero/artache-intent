@@ -132,6 +132,21 @@ export async function saveFileAs(name: string, text: string): Promise<boolean> {
   return true;
 }
 
+/** Save a made file (a manuscript): a save dialog in the app, a download in the browser. */
+export async function saveBinaryAs(name: string, data: Uint8Array, type: { label: string; ext: string; mime: string }): Promise<boolean> {
+  const base = `${name.replace(/[\\/:*?"<>|]+/g, "").trim() || "manuscript"}.${type.ext}`;
+  if (isTauri()) {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const fs = await import("@tauri-apps/plugin-fs");
+    const path = await save({ defaultPath: base, filters: [{ name: type.label, extensions: [type.ext] }] });
+    if (!path) return false;
+    await fs.writeFile(path, data);
+    return true;
+  }
+  download(base, new Blob([data as BlobPart], { type: type.mime }));
+  return true;
+}
+
 /** Pick .intent / .sheet files from disk and return them by name. */
 export async function openFiles(): Promise<Record<string, string>> {
   const out: Record<string, string> = {};

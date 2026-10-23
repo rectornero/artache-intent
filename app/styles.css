@@ -564,3 +564,8 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .meter > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .meter.full > i { background: var(--good, #2e7d4f); }
 .modal.goals { width: min(420px, 100%); }
+
+/* Export → Manuscript */
+.manuscript { display: flex; flex-direction: column; gap: 12px; }
+.manuscript .row { display: flex; gap: 8px; }
+.manuscript .row button { padding: 7px 16px; border-radius: 999px; border: 1px solid var(--border); }

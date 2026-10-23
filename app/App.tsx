@@ -8,6 +8,7 @@ import { toLayer, type Layer } from "../src/core/layers.ts";
 import { parseScript, slug } from "../src/core/parser.ts";
 import { assetsFromMv, assetsFromRenpy } from "../src/core/assets.ts";
 import { clueBoard } from "../src/core/mystery.ts";
+import { manuscript, manuscriptWords, type ManuscriptOptions } from "../src/core/manuscript.ts";
 import { detectMinigames, sheetFileName, sheetNames, sheetUsage, type SheetKind } from "../src/core/sheets.ts";
 import { inSync, markSynced, neighbours, pairOf, pairState, SYNC_FILE, versionFile, type Version } from "../src/core/sync.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
@@ -23,7 +24,7 @@ import { Sidebar } from "./Sidebar.tsx";
 import { WriterBar } from "./WriterBar.tsx";
 import { GoalsModal, useTodayWords, WordBar } from "./WordBar.tsx";
 import { countWords, playWords, projectWords, readGoals, writeGoals } from "../src/core/words.ts";
-import { deliverExport, whenSaveFails, isTauri, launchFile, launchProject, loadPrefs, openFiles, savePrefs, saveFileAs, type Project } from "./storage.ts";
+import { deliverExport, whenSaveFails, isTauri, saveBinaryAs, launchFile, launchProject, loadPrefs, openFiles, savePrefs, saveFileAs, type Project } from "./storage.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, type UiPrefs } from "./themes.ts";
 import type { LinkTarget } from "./intentMode.ts";
 import { useBackups } from "./hooks/useBackups.ts";
@@ -43,6 +44,7 @@ const ConnectClaude = lazy(() => import("./ConnectClaude.tsx").then((m) => ({ de
 const HandoffModal = lazy(() => import("./HandoffModal.tsx").then((m) => ({ default: m.HandoffModal })));
 const HistoryPanel = lazy(() => import("./HistoryPanel.tsx").then((m) => ({ default: m.HistoryPanel })));
 const ClueBoard = lazy(() => import("./ClueBoard.tsx").then((m) => ({ default: m.ClueBoard })));
+const ManuscriptPanel = lazy(() => import("./ManuscriptPanel.tsx").then((m) => ({ default: m.ManuscriptPanel })));
 const MvView = lazy(() => import("./MvView.tsx").then((m) => ({ default: m.MvView })));
 const SearchPanel = lazy(() => import("./SearchPanel.tsx").then((m) => ({ default: m.SearchPanel })));
 const Settings = lazy(() => import("./Settings.tsx").then((m) => ({ default: m.Settings })));
@@ -306,6 +308,41 @@ export function App() {
     say(isTauri() ? "Exported" : "Export downloaded");
   };
 
+  // Export → Manuscript: each script's Draft in order, or its Play as prose when there's no Draft yet.
+  const manuscriptSource = () => {
+    const settings = (() => { try { return JSON.parse(project.files["intent.json"] || "{}"); } catch { return {}; } })();
+    const drafts = (ok?.scripts ?? []).map((s) => s.file).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).map((f) => {
+      const draft = project.files[versionFile(f, "draft")];
+      const play = project.files[f] ?? "";
+      return { file: f, fromPlay: draft === undefined, text: draft ?? toLayer("draft", play, parseScript(play, ok!.config, f), ok!.config).text };
+    });
+    return { drafts, title: settings.title || project.name, author: settings.author || "" };
+  };
+  const makeManuscript = async (format: "docx" | "pdf", opts: ManuscriptOptions) => {
+    const { drafts } = manuscriptSource();
+    const blocks = manuscript(drafts.map((d) => d.text), opts);
+    const words = manuscriptWords(blocks);
+    try {
+      const data = format === "docx"
+        ? await (await import("../src/core/docx.ts")).docx(blocks, opts, words)
+        : await (await import("./manuscriptPdf.ts")).manuscriptPdf(blocks, opts, words);
+      const type = format === "docx" ? { label: "Word document", ext: "docx", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" } : { label: "PDF", ext: "pdf", mime: "application/pdf" };
+      if (await saveBinaryAs(opts.title || project.name, data, type)) say(isTauri() ? "Manuscript saved." : "Manuscript downloaded.");
+    } catch (e) {
+      say(`Couldn't make the manuscript: ${e instanceof Error ? e.message : String(e)}`, 8000);
+    }
+  };
+  const setAuthor = (author: string) => {
+    try {
+      const settings = JSON.parse(project.files["intent.json"] || "{}");
+      if (author.trim()) settings.author = author.trim();
+      else delete settings.author;
+      setFile("intent.json", JSON.stringify(settings, null, 2));
+    } catch {
+      // Settings that aren't valid JSON are shown as an error already.
+    }
+  };
+
   const projectActions = (
     <>
       <button className="side-btn" onClick={io.addProject}>New project</button>
@@ -348,6 +385,7 @@ export function App() {
           onSaveProjectFile={() => void io.saveAsProjectFile(project.files)} onOpenProjectFile={() => void io.openProject()} />
       );
       case "checks": return <ChecksPanel files={project.files} script={isScript ? file : null} busy={!!busy} onRun={(w) => void ai.runCheck(w)} onOpen={openAt} onDismiss={dismissIssue} />;
+      case "manuscript": return <ManuscriptPanel key={project.id} source={manuscriptSource()} busy={!!busy} onMake={(f, o) => void makeManuscript(f, o)} onAuthor={setAuthor} />;
       case "clues": return (
         <ClueBoard board={clueBoard(result.sheets, result.scripts)} onOpenSheet={openSheet} onOpen={openAt}
           onNewClue={() => { const n = prompt("New clue name"); if (n?.trim()) fx.createSheet("clue", n.trim()); }} />
