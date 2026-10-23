@@ -21,12 +21,14 @@ The format is described in [INTENT_SPEC.md](INTENT_SPEC.md). Read it before edit
 - \`intent.json\`: project settings.
 - \`intent.sync.json\`: Intent's record of which versions are in step. **Never edit it.**
 - \`intent.checks.json\`: story check results (see below).
+- \`intent.levels.json\`: in each Draft, the lines the writer marked by hand as Intent (keywords or a sketch to write out), Written (keep word for word) or Request (an ask for you, never story). Other lines are judged by simple rules. Leave it alone.
 
 ## Rules
 
 - Never reword the writer's text unless asked. Dialogue and narration carry over word for word between Draft and Play.
 - Keep the versions in step when you change one: Draft and Play, Play and Code, and Play and MV. Follow how each is already written.
 - When unsure, leave a note line just above: \`// check: why\` in Play, \`# check: why\` in Code, \`[check: why]\` in Draft.
+- Drafts use intent writing: some lines are finished text, some are keywords or a sketch still to be written out, and lines starting with \`/\` or \`»\` are requests to you. When asked to write, write intent out in the writer's style, keep finished text word for word, and never put a request in the story.
 - Use "gender", never "pronouns", on sheets.
 - After editing, tell the writer which files you changed. If you kept versions in step yourself, they can press **Mark as in step** in Intent's sync bar; otherwise they can use **✦ Update** there.
 - Don't touch \`.rpy\` files that have no \`.intent\` beside them, or anything under \`out/\`.

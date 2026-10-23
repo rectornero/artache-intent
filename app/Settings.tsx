@@ -58,6 +58,8 @@ export function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, set
           </label>
           <label>Show outline<input type="checkbox" checked={prefs.showOutline} onChange={(e) => setPrefs({ ...prefs, showOutline: e.target.checked })} /></label>
           <label title="In the Draft, text Claude wrote shows in Claude's colour until you edit it">Show who wrote what<input type="checkbox" checked={prefs.showAuthors !== false} onChange={(e) => setPrefs({ ...prefs, showAuthors: e.target.checked })} /></label>
+          <label title="In the Draft, keywords and sketches look softer, requests sit on a band, and each line has an edge you tap to correct it">Show levels of detail<input type="checkbox" checked={prefs.showLevels !== false} onChange={(e) => setPrefs({ ...prefs, showLevels: e.target.checked })} /></label>
+          <label title="✦ Unfold ends with one short tip on the craft, drawn from what Claude did with your text">Show writing tips<input type="checkbox" checked={prefs.showTips !== false} onChange={(e) => setPrefs({ ...prefs, showTips: e.target.checked })} /></label>
           <label title="Buttons above Draft and Play that insert characters, places, items, clues, minigames and interactions">Writer's toolbar<input type="checkbox" checked={prefs.showWriterBar !== false} onChange={(e) => setPrefs({ ...prefs, showWriterBar: e.target.checked })} /></label>
           <label title="Words in this version, the project and today, with your goals">Word count<input type="checkbox" checked={prefs.showWordCount !== false} onChange={(e) => setPrefs({ ...prefs, showWordCount: e.target.checked })} /></label>
           <label title="Underlines misspelt words in the Draft and Play, using this device's dictionaries">Spellcheck
@@ -116,7 +118,7 @@ export function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, set
         </div>
         <footer className="about">
           <img src={theme.brand.logo} alt={theme.brand.name} />
-          <span>{theme.brand.product} {__APP_VERSION__} · {theme.brand.tagline}</span>
+          <span>{theme.brand.product} {__APP_VERSION__}{__APP_CODENAME__ ? ` “${__APP_CODENAME__}”` : ""} · {theme.brand.tagline}</span>
         </footer>
       </div>
     </div>

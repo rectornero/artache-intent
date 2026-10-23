@@ -3,8 +3,9 @@
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
 import { linter, type Diagnostic as CmDiagnostic } from "@codemirror/lint";
 import { tags as t } from "@lezer/highlight";
-import { RangeSetBuilder, StateEffect, StateField, type Extension } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+import { MapMode, RangeSetBuilder, StateEffect, StateField, type Extension } from "@codemirror/state";
+import { Decoration, EditorView, GutterMarker, gutter, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+import { LEVELS, passages, type Choice, type Level, type Passage } from "../src/core/levels.ts";
 import type { Diagnostic } from "../src/core/ast.ts";
 
 interface St {
@@ -156,20 +157,105 @@ export function sheetLinks(get: () => LinkTarget[], open: (t: LinkTarget) => voi
   return [plugin, click];
 }
 
-/** Marks every {{ note }}: a part of the Draft the writer left for Claude to write. */
-export function gapMarks(): Extension {
-  const build = (doc: { toString: () => string }): DecorationSet => {
+/** Replaces the writer's choices of level (from the project, or after a tap on the edge). */
+export const setChoices = StateEffect.define<Choice[]>();
+
+/**
+ * The writer's choices of level, one per line, kept on their line through every edit:
+ * typing anywhere in the line keeps it, a new line made with Enter starts free.
+ */
+export const choicesField = StateField.define<Choice[]>({
+  create: () => [],
+  update(cs, tr) {
+    for (const e of tr.effects) if (e.is(setChoices)) return e.value;
+    if (!tr.docChanged) return cs;
+    const doc = tr.state.doc;
+    const out: Choice[] = [];
+    for (const c of cs) {
+      const at = tr.changes.mapPos(c.from, 1, MapMode.TrackDel);
+      if (at === null) continue;
+      const line = doc.lineAt(at);
+      if (!out.some((o) => o.from === line.from)) out.push({ ...c, from: line.from, to: line.to });
+    }
+    return out;
+  },
+});
+
+class LevelMark extends GutterMarker {
+  constructor(readonly level: Level, readonly chosen: boolean, readonly done: boolean) {
+    super();
+  }
+  eq(o: LevelMark) {
+    return o.level === this.level && o.chosen === this.chosen && o.done === this.done;
+  }
+  toDOM() {
+    const el = document.createElement("div");
+    el.className = `cm-level-mark lv-${this.level}${this.chosen ? " chosen" : ""}`;
+    el.title = `${LEVELS[this.level].label}${this.done ? ", carried out" : ""}${this.chosen ? " (your choice)" : ""}: ${LEVELS[this.level].hint}. Tap to change.`;
+    el.setAttribute("aria-label", el.title);
+    return el;
+  }
+}
+
+const TAGS: Record<string, Level> = { "\\": "intent", "/": "request" };
+
+/**
+ * Intent writing in the Draft: each line's level, guessed by rules or chosen by the
+ * writer, shown in the text (intent softer, requests on a band) and as a coloured
+ * edge. A tap on the edge asks the app for the menu to correct that line. Typing
+ * "\\ " or "/ " at the start of a line turns into that choice, and the tag goes.
+ */
+export function intentLevels(onPick: (at: { lineFrom: number; level: Level; chosen: boolean; x: number; y: number }) => void): Extension {
+  const field = StateField.define<Passage[]>({
+    create: (s) => passages(s.doc.toString(), s.field(choicesField, false) ?? []),
+    update: (ps, tr) => (tr.docChanged || tr.startState.field(choicesField, false) !== tr.state.field(choicesField, false) ? passages(tr.state.doc.toString(), tr.state.field(choicesField, false) ?? []) : ps),
+  });
+  const lines = EditorView.decorations.compute([field], (state) => {
     const b = new RangeSetBuilder<Decoration>();
-    for (const m of doc.toString().matchAll(/\{\{[\s\S]*?\}\}/g)) {
-      b.add(m.index!, m.index! + m[0].length, Decoration.mark({ class: "cm-gap", attributes: { title: "Claude writes this part: ✦ Write" } }));
+    for (const p of state.field(field)) {
+      for (let pos = p.from; pos <= p.to; ) {
+        const line = state.doc.lineAt(pos);
+        b.add(line.from, line.from, Decoration.line({ class: `cm-lv cm-lv-${p.level}${p.done ? " done" : ""}` }));
+        pos = line.to + 1;
+      }
     }
     return b.finish();
-  };
-  return StateField.define<DecorationSet>({
-    create: (s) => build(s.doc),
-    update: (d, tr) => (tr.docChanged ? build(tr.state.doc) : d),
-    provide: (f) => EditorView.decorations.from(f),
   });
+  const at = (state: EditorView["state"], pos: number) => state.field(field).find((p) => pos >= p.from && pos <= p.to);
+  const edge = gutter({
+    class: "cm-levels",
+    lineMarker: (view, line) => {
+      const p = at(view.state, line.from);
+      return p ? new LevelMark(p.level, view.state.field(choicesField).some((c) => c.from === line.from && !!c.level), p.done) : null;
+    },
+    lineMarkerChange: (u) => u.docChanged || u.startState.field(choicesField, false) !== u.state.field(choicesField, false),
+    domEventHandlers: {
+      click(view, line, e) {
+        const p = at(view.state, line.from);
+        if (!p) return false;
+        const r = (e.target as HTMLElement).getBoundingClientRect();
+        onPick({ lineFrom: line.from, level: p.level, chosen: view.state.field(choicesField).some((c) => c.from === line.from && !!c.level), x: r.right + 4, y: r.top });
+        return true;
+      },
+    },
+  });
+  const tags = EditorView.inputHandler.of((view, from, to, text) => {
+    if (text !== " " || from !== to) return false;
+    const line = view.state.doc.lineAt(from);
+    const before = view.state.sliceDoc(line.from, from);
+    const m = before.match(/^(\s*)(\\|\/)$/);
+    if (!m) return false;
+    const level = TAGS[m[2]];
+    const tagAt = line.from + m[1].length;
+    const rest = view.state.field(choicesField).filter((c) => c.from !== line.from);
+    view.dispatch({
+      changes: { from: tagAt, to: from },
+      effects: setChoices.of([...rest, { from: line.from, to: line.to - 1, level }]),
+      userEvent: "input.type",
+    });
+    return true;
+  });
+  return [field, lines, edge, tags];
 }
 
 /** Replaces the stretches Claude wrote (from the project, or after Claude writes more). */

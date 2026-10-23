@@ -4,7 +4,7 @@
 
 import spec from "../docs/SPEC.md?raw";
 import type { ProjectConfig } from "../src/core/config.ts";
-import type { Sheet } from "../src/core/sheets.ts";
+import { SHEET_KINDS, type Sheet, type SheetKind } from "../src/core/sheets.ts";
 import { ISSUE_KINDS, numbered, type Issue } from "../src/core/checks.ts";
 
 const KEY = "artache-intent.anthropic-key";
@@ -87,7 +87,7 @@ Rules:
 - Play to Code and back: follow how the existing code renders each kind of line.
 - Play to MV and back: follow how the existing events render each kind of line (101 face/name then 401 text lines, 102/402/404 choices, 111/411/412 conditions, 121/122 switches and variables, 117 calls). Keep the JSON valid, one command per line, and keep the ids, "switches", "variables" and "events" as they are unless a new one is needed.
 - If the version to update is empty, write it in full from the changed version.
-- Draft to Play: a {{ note }} in the Draft is a part the writer left for Claude to write later; put it in Play as a comment line "// write: note" and don't write the part.
+- Draft to Play: the Draft may still hold keywords or a sketch where the writer has not written the scene out yet; turn them into Play as best you can. A line starting with "/" or "»" is a request to Claude, not story: leave it out of Play. A leading "\\" marks intent: drop the tag.
 - Where you can't be sure, add a note line just above: "// check: why" in Play, "# check: why" in Code, "[check: why]" in Draft; in MV, a comment command {"code":108,"indent":…,"parameters":["check: why"]}.
 
 Intent Script reference:
@@ -167,7 +167,7 @@ export async function runJob<T>(apiKey: string, model: ClaudeModel, job: Job<T>)
 /** The whole job as one message to paste into the Claude app or Claude Code. */
 export function handoffText(job: Job<unknown>): string {
   return [
-    `This request comes from Artache Intent, a game script editor. Please do the task below and answer in the format asked at the end, with nothing else around it.`,
+    `This request comes from Artache Intent Writer, a game script editor. Please do the task below and answer in the format asked at the end, with nothing else around it.`,
     `<instructions>\n${job.system}\n</instructions>`,
     job.content,
     `<answer_format>\n${job.pasteAs}\n</answer_format>`,
@@ -219,33 +219,97 @@ export function updateJob(req: UpdateRequest, cfg: ProjectConfig, sheets: Sheet[
 /** The updated text of `to`. Throws on any failure; nothing is changed then. */
 export const claudeUpdate = (apiKey: string, model: ClaudeModel, req: UpdateRequest, cfg: ProjectConfig, sheets: Sheet[]) => runJob(apiKey, model, updateJob(req, cfg, sheets));
 
-const FILL_SYSTEM = `You help a game writer finish the Draft of a visual novel or RPG scene. The Draft is prose. The writer wrote some parts in full and left others as short notes, marked <write n="…">note</write>, for you to write.
+const UNFOLD_SYSTEM = `You help a game writer turn their Draft into its final form. They practise intent writing: each part is written at the level of detail it deserves, and requests to you sit in the same text as the story.
 
-Write each marked part as prose that:
-- does what the note says, and no more: don't resolve plot points the note doesn't ask for;
+- <part n="…" level="intent">: keywords or a sketch of what happens. Write it out as finished prose (and dialogue, when it calls for it). A leading "\\" is the writer's tag for intent: drop it.
+- <part n="…" level="written">: the writer's finished text. Return it word for word. Only if some of it is still keywords or a sketch, write out just that bit and keep every finished word as it is.
+- Text outside the tags (headings, comments) stays as it is.
+- <request n="…">: an ask for you, not story, in full sentences or as bare keywords alike (a leading "/" or "»" is the writer's tag). Follow it while you write the parts. When it asks for something outside the story text (a minigame, character, place, item or clue), draft that as a sheet. Answer each request in one or two sentences.
+- The levels were guessed by simple rules, so trust what the words are over the label.
+- Also give one writing tip: a short, friendly craft lesson drawn from what you just did with THIS text (for example how a keyword became a concrete image, or why a line of dialogue now carries the subtext). One or two sentences, quoting the writer's own words. Write it in the language of the writer's text. Never lecture or judge.
+
+Each part you write:
+- does what its words say, and no more: don't resolve plot points the writer didn't ask for;
 - fits exactly where it stands, flowing from the text before it into the text after it;
-- matches the writer's own style around it: tense, person, sentence length, how dialogue is tagged ("“Line,” Tony says."), and how much description there is;
+- matches the writer's finished text around it: tense, person, sentence length, how dialogue is tagged, how much description;
 - keeps every character true to their sheet: names, nicknames, gender, voice, what they know;
-- respects any length the note gives ("about 300 words", "two lines"); otherwise keep it as long as the scene around it suggests.
+- is written in the language of the writer's text;
+- has the length the scene suggests, unless the writer gives one ("about 300 words").
 
-Return one text per marked part, in order, without the tags and without repeating the writer's text around it.`;
+Return one text per <part>, in order, without the tags and without repeating the text around it.`;
 
-/** Write the {{ }} parts of a Draft; the answer is one text per gap, in order. */
-export function fillJob(marked: string, count: number, cfg: ProjectConfig, sheets: Sheet[]): Job<string[]> {
-  const read = (list: unknown) => (Array.isArray(list) ? list.map((x) => String(x ?? "")) : []);
+const sheetKeys = () => (Object.keys(SHEET_KINDS) as SheetKind[]).map((k) => `${k}: ${SHEET_KINDS[k].sections.flatMap((s) => s.fields.filter((f) => !f.prompts).map((f) => f.key)).join(", ")}`).join("\n");
+
+/** What ✦ Unfold did with a request: a short answer, and a sheet when one was asked for. */
+export interface Answer {
+  n: number;
+  reply: string;
+  sheet?: { kind: SheetKind; name: string; fields: { key: string; value: string }[] };
+}
+export interface Unfolded {
+  parts: string[];
+  answers: Answer[];
+  /** One craft tip drawn from this text, for writers who want to learn. */
+  tip: string;
+}
+
+/** ✦ Unfold the Draft: write out every Fast, Medium and note part, and carry out the requests. */
+export function unfoldJob(marked: string, parts: number, asks: number, cfg: ProjectConfig, sheets: Sheet[]): Job<Unfolded> {
+  const kinds = Object.keys(SHEET_KINDS);
+  const read = (d: unknown): Unfolded => {
+    const o = (d ?? {}) as { parts?: unknown; answers?: unknown; tip?: unknown };
+    const answers = (Array.isArray(o.answers) ? o.answers : []).map((a) => a as Answer).filter((a) => a && typeof a.reply === "string");
+    for (const a of answers) if (a.sheet && (!kinds.includes(a.sheet.kind) || !a.sheet.name?.trim())) delete a.sheet;
+    return { parts: Array.isArray(o.parts) ? o.parts.map((x) => String(x ?? "")) : [], answers, tip: typeof o.tip === "string" ? o.tip.trim() : "" };
+  };
   return {
-    title: `Write ${count} part${count === 1 ? "" : "s"} of the Draft`,
-    system: FILL_SYSTEM,
-    content: [context(cfg, sheets), `<draft>\n${marked}\n</draft>`, `Write the ${count} marked part${count === 1 ? "" : "s"}.`].join("\n\n"),
-    schema: { type: "object", properties: { parts: { type: "array", items: { type: "string" } } }, required: ["parts"], additionalProperties: false },
+    title: "Unfold the Draft",
+    system: UNFOLD_SYSTEM,
+    content: [
+      context(cfg, sheets),
+      `<sheet_fields>\nThe fields each kind of sheet has:\n${sheetKeys()}\n</sheet_fields>`,
+      `<draft>\n${marked}\n</draft>`,
+      `Return the ${parts} part${parts === 1 ? "" : "s"}${asks ? ` and carry out the ${asks} request${asks === 1 ? "" : "s"}` : ""}.`,
+    ].join("\n\n"),
+    schema: {
+      type: "object",
+      properties: {
+        parts: { type: "array", items: { type: "string" } },
+        answers: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              n: { type: "integer" },
+              reply: { type: "string" },
+              sheet: {
+                type: "object",
+                properties: {
+                  kind: { type: "string", enum: kinds },
+                  name: { type: "string" },
+                  fields: { type: "array", items: { type: "object", properties: { key: { type: "string" }, value: { type: "string" } }, required: ["key", "value"], additionalProperties: false } },
+                },
+                required: ["kind", "name", "fields"],
+                additionalProperties: false,
+              },
+            },
+            required: ["n", "reply"],
+            additionalProperties: false,
+          },
+        },
+        tip: { type: "string" },
+      },
+      required: ["parts", "answers", "tip"],
+      additionalProperties: false,
+    },
     effort: "medium",
     maxTokens: 32000,
     thinking: true,
-    read: (d) => read((d as { parts: unknown }).parts),
-    pasteAs: `Each part in order, each inside its own fenced code block (\`\`\`text … \`\`\`), numbered like the marks: part 1 first.`,
+    read,
+    pasteAs: `JSON only, inside one fenced block (\`\`\`json … \`\`\`), shaped like:\n{"parts": ["text of part 1", "text of part 2"], "answers": [{"n": 1, "reply": "…", "sheet": {"kind": "minigame", "name": "…", "fields": [{"key": "…", "value": "…"}]}}], "tip": "…"}\nLeave out "sheet" when a request needs none.`,
     readPasted: (a) => {
-      const blocks = [...a.matchAll(/```[\w-]*[^\S\n]*\n([\s\S]*?)\n?```/g)].map((m) => m[1]);
-      return blocks.length ? blocks : [a.trim()];
+      const text = fenced(a);
+      return read(JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)));
     },
   };
 }
@@ -263,7 +327,7 @@ const TOGETHER_SYSTEM = `You write a game story together with its writer. You ge
 - Keep every character true to their sheet: names, nicknames, gender, voice, what they know so far.
 - Move the story forward the way the draft is heading, and follow the writer's direction if they give one. Don't wrap up threads the writer is clearly saving for later, and don't add major characters or twists that aren't set up.
 - Places and minigames from the sheets can appear; name them the way the sheets do.
-- Leave {{ notes }} in the draft alone: they are the writer's.
+- Requests to you (lines starting with "/" or "»") are not story: don't continue or repeat them.
 - Return only the new text, starting right after the draft's last words, without repeating any of it.`;
 
 /** Continue the Draft by a page, a part or a chapter; the answer is the new text only. */

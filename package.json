@@ -1,8 +1,9 @@
 {
   "name": "artache-intent",
-  "version": "0.4.0",
+  "version": "0.5.0",
+  "codename": "Origami",
   "private": true,
-  "description": "Artache Intent: write a game script once, export it to Ren'Py and RPG Maker MV.",
+  "description": "Artache Intent Writer: write a game script at any level of detail, unfold it with Claude, export it to Ren'Py and RPG Maker MV.",
   "type": "module",
   "bin": {
     "intent": "./src/cli.ts"

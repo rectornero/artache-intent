@@ -1,11 +1,13 @@
 import { useState, type MutableRefObject } from "react";
+import type { Choice } from "../../src/core/levels.ts";
 import { AUTHORS_FILE, claudeSpans, readAuthors, writeAuthors, type Span } from "../../src/core/authors.ts";
 import { CHECKS_FILE, mergeRun, readChecks, writeChecks } from "../../src/core/checks.ts";
-import { fillGapsAt, findGaps, markGaps } from "../../src/core/fill.ts";
-import { detectMinigames, newSheet, sheetFileName, type Sheet } from "../../src/core/sheets.ts";
+import { choicesIn, choose, LEVELS_FILE, lineStarts, passages, readLevels, writeLevels } from "../../src/core/levels.ts";
+import { detectMinigames, newSheet, serializeSheet, sheetFileName, type Sheet } from "../../src/core/sheets.ts";
+import { applyUnfold, planUnfold } from "../../src/core/unfold.ts";
 import { markSynced, pairOf, readSync, SYNC_FILE, versionFile, type Version } from "../../src/core/sync.ts";
 import type { CompileResult } from "../../src/project.ts";
-import { STRETCHES, checkJob, explainFailure, fillJob, promptJob, togetherJob, updateJob, type Job, type Stretch } from "../claude.ts";
+import { STRETCHES, checkJob, explainFailure, promptJob, togetherJob, unfoldJob, updateJob, type Job, type Stretch, type Unfolded } from "../claude.ts";
 import { saveSnapshot } from "../history.ts";
 import { VERSION_NAMES } from "../ScriptBars.tsx";
 import type { Project } from "../storage.ts";
@@ -13,8 +15,11 @@ import { CANCELLED } from "./useClaude.ts";
 import type { Files } from "./useProjects.ts";
 import type { Say } from "./useToast.ts";
 
-/** Claude's writing waiting for review: ✦ Write or Write together. `spans` are all of Claude's stretches in `after`. */
-export type Writing = { projectId: string; file: string; before: string; after: string; title: string; spans: Span[]; retry: () => void };
+/**
+ * Claude's writing waiting for review: ✦ Unfold or Write together. `spans` are all of Claude's stretches in `after`.
+ * ✦ Unfold also brings what it did with each request: `answers`, new `sheets` (file → text), and the request lines it carried out.
+ */
+export type Writing = { projectId: string; file: string; before: string; after: string; title: string; spans: Span[]; retry: () => void; answers?: string[]; sheets?: Record<string, string>; choices?: Choice[]; tip?: string };
 /** A ✦ Update waiting for review. */
 export type Reviewing = { projectId: string; play: string; from: Version; to: Version; before: string; after: string; fromText: string };
 
@@ -80,24 +85,46 @@ export function useClaudeActions(c: {
     say(`${VERSION_NAMES[r.to]} updated.`, 8000, { label: "Undo", run: () => c.setFiles(r.projectId, (now) => ({ ...now, [f]: r.before })) });
   };
 
-  // ✦ Write: Claude writes the {{ }} parts of the Draft, then review before it changes.
-  const writeGaps = async () => {
+  // ✦ Unfold: Claude writes out every Fast, Medium and {{ note }} part and carries out the requests, then review before it changes.
+  const unfold = async () => {
     if (!ok || c.busy) return;
     const f = vFile("draft");
     const before = project.files[f] ?? "";
-    const gaps = findGaps(before);
-    if (!gaps.length) return;
-    let parts: string[];
+    const choices = choicesIn(before, readLevels(project.files)[f]);
+    const plan = planUnfold(before, passages(before, choices));
+    if (!plan.units.length && !plan.asks.length) return say("Nothing to unfold yet: write a few words first.", 5000);
+    let got: Unfolded;
     try {
-      parts = await c.askClaude(fillJob(markGaps(before, gaps), gaps.length, ok.config, sheets()));
+      got = await c.askClaude(unfoldJob(plan.marked, plan.units.length, plan.asks.length, ok.config, sheets()));
     } catch (e) {
       if (e === CANCELLED) return;
-      return say(`Claude couldn't write it: ${explainFailure(e)}. Nothing changed.`, 8000);
+      return say(`Claude couldn't unfold it: ${explainFailure(e)}. Nothing changed.`, 8000);
     }
-    const r = fillGapsAt(before, gaps, parts);
+    const { parts, answers, tip } = got;
+    const r = applyUnfold(before, plan.units, parts);
     const kept = claudeIn(project.files, f).map((x) => ({ from: r.map(x.from), to: r.map(x.to) }));
-    const n = r.written.length;
-    setWriting({ projectId: project.id, file: f, before, after: r.text, title: `✦ Write ${n} part${n === 1 ? "" : "s"} of the Draft`, spans: [...kept, ...r.written], retry: () => void writeGaps() });
+    const newSheets: Record<string, string> = {};
+    const replies: string[] = [];
+    for (const a of answers) {
+      const ask = plan.asks[a.n - 1];
+      if (!ask) continue;
+      let line = `${ask.lines[0].replace(/^»\s*/, "").slice(0, 60)}: ${a.reply.trim()}`;
+      if (a.sheet) {
+        const sf = sheetFileName(a.sheet.kind, a.sheet.name);
+        if (project.files[sf] === undefined) {
+          newSheets[sf] = serializeSheet({ kind: a.sheet.kind, name: a.sheet.name.trim(), fields: Object.fromEntries(a.sheet.fields.map((x) => [x.key, x.value])), notes: [`Drafted by ✦ Unfold from ${file}.`] });
+          line += ` New sheet: ${sf}.`;
+        } else line += ` ${sf} already exists, so it was left as it is.`;
+      }
+      replies.push(line);
+    }
+    const n = r.written.length, k = answers.filter((a) => plan.asks[a.n - 1]).length;
+    const what = [n ? `${n} part${n === 1 ? "" : "s"} written out` : "", k ? `${k} request${k === 1 ? "" : "s"} carried out` : ""].filter(Boolean).join(", ");
+    setWriting({ projectId: project.id, file: f, before, after: r.text, title: `✦ Unfold: ${what}`, spans: [...kept, ...r.written], retry: () => void unfold(),
+      answers: replies, sheets: newSheets, tip,
+      // The choices, moved to where their lines are now, with every request marked carried out.
+      choices: plan.asks.reduce((cs, p) => lineStarts(before, p.from, p.to).reduce((acc, at) => choose(acc, r.text, r.map(at), { done: true }), cs),
+        choices.map((x) => ({ ...x, from: r.map(x.from), to: r.map(x.to) }))) });
   };
   // Write together: Claude continues the Draft by a page, a part or a chapter.
   const writeTogether = async (stretch: Stretch, direction: string) => {
@@ -127,13 +154,27 @@ export function useClaudeActions(c: {
     saveSnapshot(r.projectId, r.file, r.before, `Before ${r.title.replace(/^✦ /, "")}`);
     c.bumpHistory();
     const oldAuthors = target.files[AUTHORS_FILE];
-    c.setFiles(r.projectId, (now) => withAuthors(now, r.file, r.after, r.spans));
-    say("Claude's writing is in the Draft. The text before is in History.", 8000, {
+    const oldLevels = target.files[LEVELS_FILE];
+    c.setFiles(r.projectId, (now) => {
+      const files = withAuthors(now, r.file, r.after, r.spans);
+      for (const [sf, text] of Object.entries(r.sheets ?? {})) if (files[sf] === undefined) files[sf] = text;
+      if (r.choices) {
+        const json = writeLevels(files, r.file, r.after, r.choices);
+        if (json) files[LEVELS_FILE] = json;
+        else delete files[LEVELS_FILE];
+      }
+      return files;
+    });
+    const made = Object.keys(r.sheets ?? {});
+    say(`Claude's writing is in the Draft${made.length ? `, with ${made.length} new sheet${made.length === 1 ? "" : "s"}` : ""}. The text before is in History.`, 8000, {
       label: "Undo",
       run: () => c.setFiles(r.projectId, (now) => {
         const files = { ...now, [r.file]: r.before };
         if (oldAuthors === undefined) delete files[AUTHORS_FILE];
         else files[AUTHORS_FILE] = oldAuthors;
+        if (oldLevels === undefined) delete files[LEVELS_FILE];
+        else files[LEVELS_FILE] = oldLevels;
+        for (const sf of made) delete files[sf];
         return files;
       }),
     });
@@ -167,5 +208,5 @@ export function useClaudeActions(c: {
     }
   };
 
-  return { writing, setWriting, reviewing, setReviewing, syncVersions, acceptUpdate, writeGaps, writeTogether, acceptWriting, onClaudeSpans, draftPrompt, runCheck };
+  return { writing, setWriting, reviewing, setReviewing, syncVersions, acceptUpdate, unfold, writeTogether, acceptWriting, onClaudeSpans, draftPrompt, runCheck };
 }

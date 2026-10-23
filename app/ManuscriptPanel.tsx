@@ -25,7 +25,7 @@ export function ManuscriptPanel({ source, busy, onMake, onAuthor }: {
   return (
     <div className="manuscript" data-testid="manuscript">
       <p className="muted checks-note">
-        Every script's Draft, in order, as one manuscript: Times 12 pt, double-spaced, chapters on new pages. Script lines, comments and {"{{ notes }}"} are left out.
+        Every script's Draft, in order, as one manuscript: Times 12 pt, double-spaced, chapters on new pages. Script lines, comments and requests to Claude are left out.
       </p>
       <div className="form-grid">
         <label>Title<input value={title} onChange={(e) => setTitle(e.target.value)} /></label>

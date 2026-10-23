@@ -27,7 +27,7 @@ export function versionOf(file: string): Version | null {
 }
 
 /** Files that belong to another file's versions, or Intent's own records (sync, story checks). */
-export const isVersionFile = (name: string) => name === SYNC_FILE || name === "intent.checks.json" || name === "intent.authors.json" || VERSION_FILE.test(name);
+export const isVersionFile = (name: string) => name === SYNC_FILE || name === "intent.checks.json" || name === "intent.authors.json" || name === "intent.levels.json" || VERSION_FILE.test(name);
 
 type SyncRecord = Record<string, Partial<Record<Pair, Partial<Record<Version, string>>>>>;
 
