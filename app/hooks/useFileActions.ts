@@ -1,6 +1,6 @@
 import { deleteFile, renameScript, renameSheet, type ReplaceResult } from "../../src/core/search.ts";
 import { newSheet, sheetFileName, SHEET_HEAD, SHEET_KINDS, type SheetKind } from "../../src/core/sheets.ts";
-import { versionFile, VERSIONS } from "../../src/core/sync.ts";
+import { versionFile, versionOf, VERSION_FILE, VERSIONS, type Version } from "../../src/core/sync.ts";
 import type { CompileResult } from "../../src/project.ts";
 import { saveSnapshot } from "../history.ts";
 import type { Project } from "../storage.ts";
@@ -12,6 +12,7 @@ export function useFileActions(c: {
   project: Project; file: string; ok: CompileResult | null; cursorLine: number; sheetFile: string | null;
   setFiles: (id: string, files: Files | ((now: Files) => Files)) => void; say: Say; bumpHistory: () => void;
   setFileName: (f: string) => void; setSheetFile: (f: string | null) => void; openSheet: (f: string) => void;
+  setLayer: (v: Version) => void;
 }) {
   const { project, file, ok, say } = c;
   const setFile = (name: string, text: string) => c.setFiles(project.id, (now) => ({ ...now, [name]: text }));
@@ -113,8 +114,16 @@ export function useFileActions(c: {
       return [kind ? sheetFileName(kind[1] as SheetKind, kind[2].trim()) : n, text] as const;
     });
     if (!named.length) return;
-    c.setFiles(project.id, (now) => ({ ...now, ...Object.fromEntries(named) }));
-    c.setFileName(named[0][0]);
+    // A saved Draft (or other version) opens as that version of its script, which it gets if it has none.
+    const play = (n: string) => (VERSION_FILE.test(n) ? n.replace(VERSION_FILE, ".intent") : n);
+    c.setFiles(project.id, (now) => {
+      const next = { ...now, ...Object.fromEntries(named) };
+      for (const [n] of named) if (next[play(n)] === undefined) next[play(n)] = "";
+      return next;
+    });
+    c.setFileName(play(named[0][0]));
+    const v = versionOf(named[0][0]);
+    if (v && v !== "play") c.setLayer(v);
     say(named.length > 1 ? `Opened ${named.length} files` : `Opened ${named[0][0].split("/").pop()}`);
   };
 

@@ -226,7 +226,7 @@ export function App() {
     setTab("sheet");
     setMobile("preview");
   };
-  const fx = useFileActions({ project, file, ok, cursorLine, sheetFile, setFiles, say, bumpHistory, setFileName, setSheetFile, openSheet });
+  const fx = useFileActions({ project, file, ok, cursorLine, sheetFile, setFiles, say, bumpHistory, setFileName, setSheetFile, openSheet, setLayer });
   const { setFile } = fx;
   const dismissIssue = (issueId: string, on: boolean) => {
     const c = readChecks(project.files);
@@ -446,7 +446,15 @@ export function App() {
         ...(isTauri() ? [{ label: "Folder…", run: () => void io.openFolderProject() }] : []),
       ])}>Open ▾</button>
       <button className="side-btn" onClick={(e) => pop(e, [
-        ...(!file.endsWith(".json") ? [{ label: `This file as… (${file.split("/").pop()})`, run: () => void saveFileAs(file, project.files[file] ?? "").then((done) => done && say(`Saved ${file.split("/").pop()}`)) }] : []),
+        // A script saves each of its versions on its own (Draft, Play, Code…); anything else as itself.
+        // Code and MV not opened yet are written from Play on the spot.
+        ...(isScript ? versions.map(vFile) : file.endsWith(".json") ? [] : [file]).flatMap((f) => {
+          const name = f.split("/").pop();
+          const v = isScript ? versionOf(f) : null;
+          const text = () => project.files[f] ?? (v === "renpy" || v === "mv" ? compiledVersion(v, project.files[file] ?? "") : "");
+          if (project.files[f] === undefined && !(ok && (v === "renpy" || v === "mv"))) return [];
+          return [{ label: v ? `${VERSION_NAMES[v]} as… (${name})` : `This file as… (${name})`, run: () => void saveFileAs(f, text()).then((done) => done && say(`Saved ${name}`)) }];
+        }),
         { label: "Project file…", run: () => void io.saveAsProjectFile(project.files) },
         ...(isTauri() && !project.folder ? [{ label: "Keep in a folder…", run: () => void io.keepInFolder() }] : []),
       ])}>Save ▾</button>

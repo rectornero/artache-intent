@@ -2,6 +2,13 @@
 
 Artache Intent Writer, the writing program of the Artache Intent suite.
 
+## 0.6.2 "Vellum" (2026-10-23)
+
+- Save now offers each version of a script on its own: **Draft as…** (`name.draft`),
+  **Play as…** (`name.intent`) and **Code as…** (`name.rpy`), plus MV when it is on.
+  Before, "This file as…" always saved Play, which may not have your Draft changes yet.
+- Open → Script or sheet also opens a saved `.draft`, as the Draft of its script.
+
 ## 0.6.1 "Vellum" (2026-10-23)
 
 - The Draft no longer colours a name before ":" (or a leading "-" or "(…)") as a speaker:
