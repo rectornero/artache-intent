@@ -92,7 +92,7 @@ export function useClaudeActions(c: {
     const before = project.files[f] ?? "";
     const choices = choicesIn(before, readLevels(project.files)[f]);
     const plan = planUnfold(before, passages(before, choices));
-    if (!plan.units.length && !plan.asks.length) return say("Nothing to unfold yet: write a few words first.", 5000);
+    if (!plan.units.length && !plan.asks.length) return say("Nothing to unfold yet: mark a line as Intent (\\) or Request (/) first. Tap its edge, or use the toolbar.", 7000);
     let got: Unfolded;
     try {
       got = await c.askClaude(unfoldJob(plan.marked, plan.units.length, plan.asks.length, ok.config, sheets()));

@@ -3,9 +3,9 @@ import { fillGapsAt, retireNotes } from "../src/core/fill.ts";
 import { claudeSpans, subtract, writeAuthors, readAuthors } from "../src/core/authors.ts";
 
 describe("old {{ notes }}", () => {
-  it("become lines of their own, across lines and mid-paragraph", () => {
+  it("become intent lines of their own, across lines and mid-paragraph", () => {
     const draft = `Tony opens the door.\n\n{{ Tony and Limo argue about the alibi;\nLimo wins }}\n\n“Fine,” Tony says. {{ he leaves }} The end. {{   }}`;
-    expect(retireNotes(draft)).toBe(`Tony opens the door.\n\nTony and Limo argue about the alibi; Limo wins\n\n“Fine,” Tony says.\nhe leaves\nThe end.`);
+    expect(retireNotes(draft)).toBe(`Tony opens the door.\n\n\\ Tony and Limo argue about the alibi; Limo wins\n\n“Fine,” Tony says.\n\\ he leaves\nThe end.`);
   });
   it("leave a Draft without notes alone", () => {
     expect(retireNotes("Rain.  \nDoor.")).toBe("Rain.  \nDoor.");

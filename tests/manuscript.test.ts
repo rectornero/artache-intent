@@ -31,6 +31,14 @@ describe("manuscript", () => {
     expect(runsOf("~Slowly~ | he [[turns | looks]] away")).toEqual([{ text: "Slowly he turns away" }]);
   });
 
+  it("keeps the writer's formatting", () => {
+    expect(runsOf("A **bold *and* brave** step and `a note`")).toEqual([
+      { text: "A " }, { text: "bold ", bold: true }, { text: "and", italic: true, bold: true }, { text: " brave", bold: true }, { text: " step and " }, { text: "a note", code: true },
+    ]);
+    expect(runsOf("\\ rain, door, *silence*")).toEqual([{ text: "rain, door, " }, { text: "silence", italic: true }]);
+    expect(draftBlocks("- first\n- *second*", false)).toEqual([{ kind: "para", runs: [{ text: "first" }], bullet: true }, { kind: "para", runs: [{ text: "second", italic: true }], bullet: true }]);
+  });
+
   it("counts the manuscript's words", () => {
     expect(manuscriptWords(manuscript([draft], opts))).toBe(4 + 6 + 5);
   });

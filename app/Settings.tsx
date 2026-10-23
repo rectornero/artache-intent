@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { CLAUDE_MODELS, type ClaudeModel, type ClaudeVia } from "./claude.ts";
-import { THEMES, type Theme, type UiPrefs } from "./themes.ts";
+import { TEXT_SIZES, THEMES, WRITING_FONTS, type Theme, type UiPrefs } from "./themes.ts";
 import { forgetRenpySdk, isPhone, isTauri } from "./storage.ts";
-
-const SPELL_LANGS = [["en-GB", "English (UK)"], ["en-US", "English (US)"], ["it", "Italian"], ["es", "Spanish"], ["fr", "French"], ["de", "German"], ["pt", "Portuguese"]];
 
 export function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, setModel, via, setVia, onClose }: { prefs: UiPrefs; setPrefs: (p: UiPrefs) => void; theme: Theme; apiKey: string; setApiKey: (k: string) => void; model: ClaudeModel; setModel: (m: ClaudeModel) => void; via: ClaudeVia; setVia: (v: ClaudeVia) => void; onClose: () => void }) {
   const [keyDraft, setKeyDraft] = useState("");
@@ -44,6 +42,29 @@ export function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, set
             ))}
           </div>
         </details>
+        <h3>Writing</h3>
+        <div className="form-grid">
+          <label className="wide">Text size <span className="muted">{prefs.editorSize}px</span>
+            <input type="range" min={TEXT_SIZES.min} max={TEXT_SIZES.max} value={prefs.editorSize} onChange={(e) => setPrefs({ ...prefs, editorSize: Number(e.target.value) })} aria-label="Text size" />
+          </label>
+          <label className="font-pick">Story font (Draft)
+            <select value={prefs.storyFont ?? "theme"} onChange={(e) => setPrefs({ ...prefs, storyFont: e.target.value })}>
+              {WRITING_FONTS.map((f) => <option key={f.id} value={f.id} style={f.css ? { fontFamily: f.css } : undefined}>{f.label}</option>)}
+            </select>
+          </label>
+          <label className="font-pick">Script font (Play)
+            <select value={prefs.scriptFont ?? "theme"} onChange={(e) => setPrefs({ ...prefs, scriptFont: e.target.value })}>
+              {WRITING_FONTS.map((f) => <option key={f.id} value={f.id} style={f.css ? { fontFamily: f.css } : undefined}>{f.label}</option>)}
+            </select>
+          </label>
+          <label title="The line you write on stays in the middle of the screen, like a typewriter">Keep the line in the middle<input type="checkbox" checked={prefs.typewriter !== false} onChange={(e) => setPrefs({ ...prefs, typewriter: e.target.checked })} /></label>
+          <label title="Names of the characters, places and other sheets you made, highlighted in the text. A click opens the sheet">Highlight names<input type="checkbox" checked={prefs.highlightNames !== false} onChange={(e) => setPrefs({ ...prefs, highlightNames: e.target.checked })} /></label>
+          <label title="Numbers beside each line of the Draft. Play always shows them">Line numbers in the Draft<input type="checkbox" checked={prefs.draftLineNumbers === true} onChange={(e) => setPrefs({ ...prefs, draftLineNumbers: e.target.checked })} /></label>
+          <label title="In the Draft, intent looks softer, requests sit on a band, and each line has an edge you tap to mark it">Show intent and requests<input type="checkbox" checked={prefs.showLevels !== false} onChange={(e) => setPrefs({ ...prefs, showLevels: e.target.checked })} /></label>
+          <label title="In the Draft, text Claude wrote shows in Claude's colour until you edit it">Show who wrote what<input type="checkbox" checked={prefs.showAuthors !== false} onChange={(e) => setPrefs({ ...prefs, showAuthors: e.target.checked })} /></label>
+          <label title="✦ Unfold ends with one short tip on the craft, drawn from what Claude did with your text">Show writing tips<input type="checkbox" checked={prefs.showTips !== false} onChange={(e) => setPrefs({ ...prefs, showTips: e.target.checked })} /></label>
+          <label>Wrap long lines<input type="checkbox" checked={prefs.wrap} onChange={(e) => setPrefs({ ...prefs, wrap: e.target.checked })} /></label>
+        </div>
         <h3>Layout</h3>
         <div className="form-grid">
           <label>Output panel
@@ -53,24 +74,13 @@ export function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, set
               <option value="hidden">Hidden</option>
             </select>
           </label>
-          <label>Editor text size
-            <input type="range" min={12} max={22} value={prefs.editorSize} onChange={(e) => setPrefs({ ...prefs, editorSize: Number(e.target.value) })} />
-          </label>
+          <label>Files column<input type="checkbox" checked={prefs.showFiles !== false} onChange={(e) => setPrefs({ ...prefs, showFiles: e.target.checked })} /></label>
           <label>Show outline<input type="checkbox" checked={prefs.showOutline} onChange={(e) => setPrefs({ ...prefs, showOutline: e.target.checked })} /></label>
-          <label title="In the Draft, text Claude wrote shows in Claude's colour until you edit it">Show who wrote what<input type="checkbox" checked={prefs.showAuthors !== false} onChange={(e) => setPrefs({ ...prefs, showAuthors: e.target.checked })} /></label>
-          <label title="In the Draft, keywords and sketches look softer, requests sit on a band, and each line has an edge you tap to correct it">Show levels of detail<input type="checkbox" checked={prefs.showLevels !== false} onChange={(e) => setPrefs({ ...prefs, showLevels: e.target.checked })} /></label>
-          <label title="✦ Unfold ends with one short tip on the craft, drawn from what Claude did with your text">Show writing tips<input type="checkbox" checked={prefs.showTips !== false} onChange={(e) => setPrefs({ ...prefs, showTips: e.target.checked })} /></label>
-          <label title="Buttons above Draft and Play that insert characters, places, items, clues, minigames and interactions">Writer's toolbar<input type="checkbox" checked={prefs.showWriterBar !== false} onChange={(e) => setPrefs({ ...prefs, showWriterBar: e.target.checked })} /></label>
+          <label title="Formatting, intent and request, and buttons that insert characters, places, items, clues, minigames and interactions">Writer's toolbar<input type="checkbox" checked={prefs.showWriterBar !== false} onChange={(e) => setPrefs({ ...prefs, showWriterBar: e.target.checked })} /></label>
           <label title="Words in this version, the project and today, with your goals">Word count<input type="checkbox" checked={prefs.showWordCount !== false} onChange={(e) => setPrefs({ ...prefs, showWordCount: e.target.checked })} /></label>
-          <label title="Underlines misspelt words in the Draft and Play, using this device's dictionaries">Spellcheck
-            <select value={prefs.spellcheck === false ? "off" : prefs.spellcheck ?? ""} onChange={(e) => setPrefs({ ...prefs, spellcheck: e.target.value === "off" ? false : e.target.value })}>
-              <option value="off">Off</option>
-              <option value="">Device language</option>
-              {SPELL_LANGS.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-            </select>
-          </label>
-          <label>Wrap long lines<input type="checkbox" checked={prefs.wrap} onChange={(e) => setPrefs({ ...prefs, wrap: e.target.checked })} /></label>
+          {(prefs.filesWidth || prefs.panelSize) && <button className="ghost" onClick={() => setPrefs({ ...prefs, filesWidth: undefined, panelSize: undefined })}>Reset column sizes</button>}
         </div>
+        <p className="muted settings-hint">Drag the edge of the files column or the panel to resize them. Focus (Ctrl+.) shows only the page; Ctrl+= and Ctrl+− change the text size.</p>
         {isTauri() && !isPhone() && (
           <>
             <h3>Playtest</h3>

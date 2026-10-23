@@ -51,15 +51,11 @@ export function Sidebar(p: {
       </div>
       {KINDS.map((k) => {
         const mine = p.sheets.filter((x) => x.sheet.kind === k).sort((a, b) => Number(isStub(b.sheet)) - Number(isStub(a.sheet)) || a.sheet.name.localeCompare(b.sheet.name));
-        const stubs = p.links.filter((l) => l.stub && l.kind === k);
-        if (!mine.length && !stubs.length) return null;
+        if (!mine.length) return null;
         return (
           <div key={k} className="sheet-group">
             <div className={`sheet-group-head k-${k}`}><Icon name={k} size={14} />{SHEET_KINDS[k].plural}</div>
             <ul className="files">
-              {stubs.map((l) => (
-                <li key={l.name}><button className="stub" onClick={() => p.onNewSheet(k, l.name)} title="Mentioned in your script. Click to make its sheet">{l.name}<span className="badge">new</span></button></li>
-              ))}
               {mine.map(({ file: f, sheet }) => (
                 <li key={f}>
                   <button className={f === p.file || f === p.sheetFile ? "active" : ""} onClick={() => p.onOpenSheet(f)}>

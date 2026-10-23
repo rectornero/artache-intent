@@ -73,7 +73,7 @@ export function SyncBar({ layer, states, busy, onMarkInStep, onSync }: {
     <div className="sync-bar" role="status" data-testid="sync-bar">
       <i className="sync-dot" />
       <span>{text}</span>
-      <button className="ghost" title="Both versions already say the same thing: stop flagging them" onClick={onMarkInStep}>Mark as in step</button>
+      <button className="ghost mark-in-step" title="Both versions already say the same thing: stop flagging them" onClick={onMarkInStep}>Mark as in step</button>
       {off.map(({ n, s }) => s.there ? (
         <button key={n} className="claude-go" disabled={busy} data-testid={`sync-${n}`} onClick={() => onSync(n, layer)}>✦ Update from {VERSION_NAMES[n]}</button>
       ) : (

@@ -19,12 +19,14 @@ Private. Nothing here is public without Nero's yes.
 - [x] Tauri shell for Windows .exe and Android .apk (`cargo check` passes)
 - [x] CI builds the .exe and .apk on every push to `main` (`.github/workflows/build.yml`)
 - [x] 0.4: mystery kit (clue sheets, alibis, clue board), writer's toolbar, word count and
-      goals, spellcheck, manuscript export (Word and PDF), MV version per script, playtest
+      goals, manuscript export (Word and PDF), MV version per script, playtest
       in Ren'Py (Windows app); see `docs/SPEC.md`
-- [x] 0.5 "Origami": intent writing. Every Draft line is read by rules as Intent, Written or
-      Request; a tap on its edge (or typing `\ ` or `/ `) corrects it; ✦ Unfold writes intent
-      out, keeps written text, carries out requests (new sheets too) and ends with a writing
-      tip. `{{ notes }}` are retired. New name and icon. See `docs/SPEC.md`
+- [x] 0.5 "Origami": intent writing. Draft lines are Written, Intent or Request; ✦ Unfold
+      writes intent out, keeps written text, carries out requests (new sheets too) and ends
+      with a writing tip. `{{ notes }}` are retired. New name and icon. See `docs/SPEC.md`
+- [x] 0.6 "Vellum": usability. No automatic rules (the writer marks Intent and Requests);
+      formatting in the Draft, the line kept in the middle, focus mode, resizable and
+      hideable columns, bigger text, new fonts, a simpler phone layout. See `CHANGELOG.md`
 - [ ] Before release: move the Claude API key out of localStorage
 - [ ] Before release: trademark check on "Artache" (TMview/WIPO, classes 9 and 41)
 

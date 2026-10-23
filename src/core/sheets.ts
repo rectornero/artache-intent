@@ -55,7 +55,7 @@ export const SHEET_KINDS: Record<SheetKind, { label: string; plural: string; fol
     plural: "Characters",
     folder: "characters",
     sections: [
-      { id: "identity", label: "Identity", fields: [f("display", "Shown as", "Name in the game"), f("nicknames", "Nicknames", "Comma separated: the old man, Mr. F"), pick("gender", "Gender", ["Female", "Male", "Non-binary", "Unknown"]), pick("role", "Role", ["Protagonist", "Narrator", "Main", "Supporting", "Antagonist", "Suspect", "Witness", "Victim", "Background"], true)] },
+      { id: "identity", label: "Identity", fields: [f("display", "Shown as", "Name in the game"), f("nicknames", "Nicknames", "Comma separated: the old man, Mr. F"), pick("gender", "Gender", ["Male", "Female", "Unknown", "Other"]), pick("role", "Role", ["Protagonist", "Narrator", "Main", "Supporting", "Antagonist", "Suspect", "Witness", "Victim", "Background"], true)] },
       { id: "look", label: "Look", fields: [f("appearance", "Appearance", "What a stranger notices", true), f("outfit", "Outfit"), { ...f("color", "Colour"), colour: true }, f("expressions", "Expressions", "neutral, smile, angry")] },
       { id: "voice", label: "Voice", fields: [f("speech", "How they talk", "Short sentences, never swears…", true), f("catchphrases", "Catchphrases"), f("never", "Words they never use"), f("sample", "Sample line", undefined, true)] },
       { id: "story", label: "Story", fields: [f("want", "Want"), f("need", "Need"), f("wound", "Wound"), f("secret", "Secret"), f("arc", "Arc", undefined, true), f("relations", "Relations", "Juu: sister. Tony: owes him money.", true)] },
@@ -155,10 +155,13 @@ export function parseSheet(text: string): Sheet | null {
   for (const k of Object.keys(sheet.fields)) sheet.fields[k] = sheet.fields[k].replace(/\n+$/, "");
   // Older sheets said "pronouns: she"; the form now asks for gender.
   if (sheet.fields.pronouns !== undefined && !sheet.fields.gender) {
-    const g = ({ he: "Male", she: "Female", they: "Non-binary" } as Record<string, string>)[sheet.fields.pronouns.trim().toLowerCase().split(/\W/)[0]];
+    const g = ({ he: "Male", she: "Female", they: "Other" } as Record<string, string>)[sheet.fields.pronouns.trim().toLowerCase().split(/\W/)[0]];
     if (g) sheet.fields.gender = g;
     delete sheet.fields.pronouns;
   }
+  // Gender is Male, Female, Unknown or Other: anything else written before fits Other.
+  const gender = sheet.fields.gender?.trim();
+  if (gender && !["male", "female", "unknown", "other"].includes(gender.toLowerCase())) sheet.fields.gender = "Other";
   return sheet;
 }
 

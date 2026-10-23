@@ -29,7 +29,7 @@ export function fillGapsAt(text: string, gaps: Gap[], fills: string[]): { text: 
   return { text: out + text.slice(at), written, map };
 }
 
-/** Every old {{ note }} as a line of its own, without the braces; empty braces go. Text with none comes back as it was. */
+/** Every old {{ note }} as an intent line of its own ("\\ note"); empty braces go. Text with none comes back as it was. */
 export function retireNotes(text: string): string {
   if (!text.includes("{{")) return text;
   return text
@@ -38,7 +38,7 @@ export function retireNotes(text: string): string {
       if (!body) return " ";
       const before = at > 0 && all[at - 1] !== "\n";
       const after = at + m.length < all.length && all[at + m.length] !== "\n";
-      return `${before ? "\n" : ""}${body}${after ? "\n" : ""}`;
+      return `${before ? "\n" : ""}\\ ${body}${after ? "\n" : ""}`;
     })
     .replace(/[^\S\n]+$/gm, "");
 }

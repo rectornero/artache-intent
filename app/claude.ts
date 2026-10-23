@@ -219,13 +219,11 @@ export function updateJob(req: UpdateRequest, cfg: ProjectConfig, sheets: Sheet[
 /** The updated text of `to`. Throws on any failure; nothing is changed then. */
 export const claudeUpdate = (apiKey: string, model: ClaudeModel, req: UpdateRequest, cfg: ProjectConfig, sheets: Sheet[]) => runJob(apiKey, model, updateJob(req, cfg, sheets));
 
-const UNFOLD_SYSTEM = `You help a game writer turn their Draft into its final form. They practise intent writing: each part is written at the level of detail it deserves, and requests to you sit in the same text as the story.
+const UNFOLD_SYSTEM = `You help a game writer turn their Draft into its final form. They practise intent writing: each part is written at the level of detail it deserves, and requests to you sit in the same text as the story. The writer marks every part themselves.
 
-- <part n="…" level="intent">: keywords or a sketch of what happens. Write it out as finished prose (and dialogue, when it calls for it). A leading "\\" is the writer's tag for intent: drop it.
-- <part n="…" level="written">: the writer's finished text. Return it word for word. Only if some of it is still keywords or a sketch, write out just that bit and keep every finished word as it is.
-- Text outside the tags (headings, comments) stays as it is.
+- <part n="…">: keywords or a sketch of what happens, marked by the writer as intent. Write it out as finished prose (and dialogue, when it calls for it). A leading "\\" is the writer's tag for intent: drop it.
+- Text outside the tags is the writer's finished text (and headings, comments): never change it. Read it to match their style and to know what happens around each part.
 - <request n="…">: an ask for you, not story, in full sentences or as bare keywords alike (a leading "/" or "»" is the writer's tag). Follow it while you write the parts. When it asks for something outside the story text (a minigame, character, place, item or clue), draft that as a sheet. Answer each request in one or two sentences.
-- The levels were guessed by simple rules, so trust what the words are over the label.
 - Also give one writing tip: a short, friendly craft lesson drawn from what you just did with THIS text (for example how a keyword became a concrete image, or why a line of dialogue now carries the subtext). One or two sentences, quoting the writer's own words. Write it in the language of the writer's text. Never lecture or judge.
 
 Each part you write:
@@ -253,7 +251,7 @@ export interface Unfolded {
   tip: string;
 }
 
-/** ✦ Unfold the Draft: write out every Fast, Medium and note part, and carry out the requests. */
+/** ✦ Unfold the Draft: write out every intent part, and carry out the requests. */
 export function unfoldJob(marked: string, parts: number, asks: number, cfg: ProjectConfig, sheets: Sheet[]): Job<Unfolded> {
   const kinds = Object.keys(SHEET_KINDS);
   const read = (d: unknown): Unfolded => {

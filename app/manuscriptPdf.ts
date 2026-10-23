@@ -13,7 +13,7 @@ export async function manuscriptPdf(blocks: Block[], opts: ManuscriptOptions, wo
   const right = W - M;
   let y = M;
   let page = 1;
-  const font = (italic = false, bold = false) => doc.setFont("times", bold ? "bold" : italic ? "italic" : "normal").setFontSize(SIZE);
+  const font = (italic = false, bold = false, code = false) => doc.setFont(code ? "courier" : "times", bold && italic ? "bolditalic" : bold ? "bold" : italic ? "italic" : "normal").setFontSize(SIZE);
   const headerText = `${[opts.author.split(" ").pop(), opts.title].filter(Boolean).join(" / ")} / `;
 
   const newPage = () => {
@@ -34,33 +34,39 @@ export async function manuscriptPdf(blocks: Block[], opts: ManuscriptOptions, wo
       y += LEAD;
     }
   };
-  // A paragraph of mixed roman and italic runs, wrapped word by word.
-  const paragraph = (runs: Run[], indent: number) => {
-    const words = runs.flatMap((r) => r.text.split(/(\s+)/).filter(Boolean).map((t) => ({ t, italic: !!r.italic })));
+  // A paragraph of mixed roman, italic, bold and code runs, wrapped word by word; a bullet hangs in the margin.
+  const paragraph = (runs: Run[], indent: number, bullet = false) => {
+    const words = runs.flatMap((r) => r.text.split(/(\s+)/).filter(Boolean).map((t) => ({ t, italic: !!r.italic, bold: !!r.bold, code: !!r.code })));
+    const left = bullet ? M + INDENT : M;
     let line: typeof words = [];
-    let width = indent;
-    let x0 = M + indent;
+    let width = bullet ? 0 : indent;
+    let x0 = bullet ? left : M + indent;
+    if (bullet) {
+      room(LEAD);
+      font();
+      doc.text("•", M + INDENT / 2, y + SIZE);
+    }
     const flush = () => {
       room(LEAD);
       let x = x0;
       for (const w of line) {
-        font(w.italic);
+        font(w.italic, w.bold, w.code);
         doc.text(w.t, x, y + SIZE);
         x += doc.getTextWidth(w.t);
       }
       y += LEAD;
       line = [];
       width = 0;
-      x0 = M;
+      x0 = left;
     };
     for (const w of words) {
-      font(w.italic);
+      font(w.italic, w.bold, w.code);
       const wd = doc.getTextWidth(w.t);
       if (/^\s+$/.test(w.t)) {
         if (line.length) line.push(w), (width += wd);
         continue;
       }
-      if (width + wd > right - M && line.length) {
+      if (width + wd > right - left && line.length) {
         while (line.length && /^\s+$/.test(line[line.length - 1].t)) line.pop();
         flush();
       }
@@ -102,8 +108,8 @@ export async function manuscriptPdf(blocks: Block[], opts: ManuscriptOptions, wo
       centred("#");
       afterHeading = true;
     } else {
-      paragraph(b.runs, afterHeading ? 0 : INDENT);
-      afterHeading = false;
+      paragraph(b.runs, afterHeading ? 0 : INDENT, b.bullet);
+      afterHeading = !!b.bullet;
     }
   }
   centred("END");

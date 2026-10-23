@@ -5,7 +5,10 @@
 import type { Block, ManuscriptOptions, Run } from "./manuscript.ts";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const run = (r: Run) => `<w:r>${r.italic ? "<w:rPr><w:i/></w:rPr>" : ""}<w:t xml:space="preserve">${esc(r.text)}</w:t></w:r>`;
+const run = (r: Run) => {
+  const pr = `${r.code ? '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New"/>' : ""}${r.bold ? "<w:b/>" : ""}${r.italic ? "<w:i/>" : ""}`;
+  return `<w:r>${pr ? `<w:rPr>${pr}</w:rPr>` : ""}<w:t xml:space="preserve">${esc(r.text)}</w:t></w:r>`;
+};
 const para = (style: string, body: string, extra = "") => `<w:p><w:pPr><w:pStyle w:val="${style}"/>${extra}</w:pPr>${body}</w:p>`;
 
 export function docxParts(blocks: Block[], opts: ManuscriptOptions, words: number): Record<string, string> {
@@ -30,8 +33,9 @@ export function docxParts(blocks: Block[], opts: ManuscriptOptions, words: numbe
       body.push(para("SceneBreak", run({ text: "#" })));
       afterHeading = true;
     } else {
-      body.push(para(afterHeading ? "FirstPara" : "Body", b.runs.map(run).join("")));
-      afterHeading = false;
+      if (b.bullet) body.push(para("Bullet", run({ text: "•\t" }) + b.runs.map(run).join("")));
+      else body.push(para(afterHeading ? "FirstPara" : "Body", b.runs.map(run).join("")));
+      afterHeading = !!b.bullet;
     }
   }
   body.push(para("SceneBreak", run({ text: "END" })));
@@ -54,6 +58,7 @@ export function docxParts(blocks: Block[], opts: ManuscriptOptions, words: numbe
       + style("FirstPara", "First Paragraph", "")
       + style("Heading1", "heading 1", '<w:keepNext/><w:spacing w:before="2880" w:after="480"/><w:jc w:val="center"/><w:outlineLvl w:val="0"/>', "<w:b/>")
       + style("Heading2", "heading 2", '<w:keepNext/><w:spacing w:before="240"/><w:jc w:val="center"/><w:outlineLvl w:val="1"/>', "<w:i/>")
+      + style("Bullet", "List Bullet", '<w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs><w:ind w:left="720" w:hanging="360"/>')
       + style("SceneBreak", "Scene Break", '<w:jc w:val="center"/>')
       + style("Title", "Title", '<w:spacing w:before="4320"/><w:jc w:val="center"/>', '<w:b/><w:sz w:val="32"/>')
       + style("Byline", "Byline", '<w:jc w:val="center"/>')

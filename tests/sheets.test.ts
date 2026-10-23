@@ -41,6 +41,10 @@ describe("sheets", () => {
     expect(detectMinigames("Now an Investigation minigame gets triggered. Later the Lockpick puzzle.")).toEqual(["Investigation", "Lockpick"]);
     expect(detectMinigames(">> MINIGAME: Deduction")).toEqual(["Deduction"]);
   });
+  it("keeps gender to Male, Female, Unknown or Other", () => {
+    expect(parseSheet("@character Ash\ngender: Non-binary")!.fields.gender).toBe("Other");
+    expect(parseSheet("@character Juu\ngender: female")!.fields.gender).toBe("female");
+  });
   it("reads an old pronouns line as gender", () => {
     expect(parseSheet("@character Juu\npronouns: she")!.fields).toEqual({ gender: "Female" });
   });

@@ -33,6 +33,8 @@ const intentStream = StreamLanguage.define<St>({
     if (stream.match(/^\/\/.*/)) return "comment";
     if (stream.match(/^\[\[[^\]]*\]\]/)) return "link";
     if (stream.match(/^\[[^\]]*\]/)) return "meta";
+    if (stream.match(/^\*\*[^*]+\*\*/)) return "strong";
+    if (stream.match(/^`[^`]+`/)) return null;
     if (stream.match(/^\*[^*]+\*/)) return "emphasis";
     if (stream.match(/^~[^~]+~/)) return "emphasis";
     if (stream.match("|")) return "operator";
@@ -52,6 +54,7 @@ const style = HighlightStyle.define([
   { tag: t.meta, color: "var(--stage)" },
   { tag: t.link, color: "var(--accent)", textDecoration: "underline" },
   { tag: t.emphasis, fontStyle: "italic" },
+  { tag: t.strong, fontWeight: "700" },
   { tag: t.propertyName, color: "var(--block)" },
   { tag: t.invalid, color: "var(--warning)", fontWeight: "700" },
 ]);
@@ -200,8 +203,8 @@ class LevelMark extends GutterMarker {
 const TAGS: Record<string, Level> = { "\\": "intent", "/": "request" };
 
 /**
- * Intent writing in the Draft: each line's level, guessed by rules or chosen by the
- * writer, shown in the text (intent softer, requests on a band) and as a coloured
+ * Intent writing in the Draft: each line's level, from the writer's tag or choice
+ * (Written otherwise), shown in the text (intent softer, requests on a band) and as a coloured
  * edge. A tap on the edge asks the app for the menu to correct that line. Typing
  * "\\ " or "/ " at the start of a line turns into that choice, and the tag goes.
  */
