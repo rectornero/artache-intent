@@ -1,6 +1,7 @@
 // Projects live in the browser (or the app's webview) by default. On desktop and
 // Android the Tauri build can also open and save a real folder.
 
+import { VERSION_FILE } from "../src/core/sync.ts";
 
 export interface Project {
   id: string;
@@ -69,12 +70,12 @@ export async function readFolder(dir: string): Promise<Record<string, string>> {
     for (const e of await fs.readDir(rel ? `${dir}/${rel}` : dir)) {
       const name = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory && depth === 0 && !e.name.startsWith(".") && e.name !== "out") await read(name, 1);
-      else if (e.isFile && (e.name.endsWith(".intent") || e.name.endsWith(".sheet") || /\.(draft|rpy)$/.test(e.name) || name === "intent.json" || name === "intent.sync.json" || name === "intent.checks.json" || name === "intent.authors.json")) files[name] = await fs.readTextFile(`${dir}/${name}`);
+      else if (e.isFile && (e.name.endsWith(".intent") || e.name.endsWith(".sheet") || VERSION_FILE.test(e.name) || name === "intent.json" || name === "intent.sync.json" || name === "intent.checks.json" || name === "intent.authors.json")) files[name] = await fs.readTextFile(`${dir}/${name}`);
     }
   };
   await read("", 0);
-  // Draft and Code versions only belong to a script next to them; other .rpy files aren't Intent's.
-  for (const n of Object.keys(files)) if (/\.(draft|rpy)$/.test(n) && files[n.replace(/\.(draft|rpy)$/, ".intent")] === undefined) delete files[n];
+  // Versions only belong to a script next to them; other .rpy or .json files aren't Intent's.
+  for (const n of Object.keys(files)) if (VERSION_FILE.test(n) && files[n.replace(VERSION_FILE, ".intent")] === undefined) delete files[n];
   return files;
 }
 

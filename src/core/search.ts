@@ -3,7 +3,7 @@
 // updates the sync record, so versions that were in step stay in step.
 
 import { parseSheet, sheetFileName } from "./sheets.ts";
-import { readSync, SYNC_FILE, versionFile, type Pair, type Version } from "./sync.ts";
+import { readSync, SYNC_FILE, versionFile, VERSIONS, type Pair, type Version } from "./sync.ts";
 
 export type Scope = "play" | "draft" | "renpy" | "sheets";
 export const SCOPES: Scope[] = ["play", "draft", "renpy", "sheets"];
@@ -25,7 +25,7 @@ export interface Match {
 export function scopeOf(file: string): Scope | null {
   if (file.endsWith(".intent")) return "play";
   if (file.endsWith(".draft")) return "draft";
-  if (file.endsWith(".rpy")) return "renpy";
+  if (file.endsWith(".rpy") || file.endsWith(".mv.json")) return "renpy";
   if (file.endsWith(".sheet")) return "sheets";
   return null;
 }
@@ -126,7 +126,7 @@ export function renameScript(files: Record<string, string>, from: string, to: st
   if (from === to) return files;
   if (files[to] !== undefined) throw new Error(`There is already a script called ${to}.`);
   const out = { ...files };
-  for (const v of ["play", "draft", "renpy"] as Version[]) {
+  for (const v of VERSIONS) {
     const a = versionFile(from, v);
     if (out[a] === undefined) continue;
     out[versionFile(to, v)] = out[a];
@@ -145,7 +145,7 @@ export function renameScript(files: Record<string, string>, from: string, to: st
 export function deleteFile(files: Record<string, string>, file: string): Record<string, string> {
   const out = { ...files };
   if (file.endsWith(".intent")) {
-    for (const v of ["draft", "renpy"] as Version[]) delete out[versionFile(file, v)];
+    for (const v of VERSIONS.filter((x) => x !== "play")) delete out[versionFile(file, v)];
     const rec = readSync(files);
     if (rec[file]) {
       delete rec[file];

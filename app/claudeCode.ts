@@ -16,6 +16,7 @@ The format is described in [INTENT_SPEC.md](INTENT_SPEC.md). Read it before edit
 - \`*.intent\`: **Play**, the script in Intent Script. This is the main version.
 - \`*.draft\`: **Draft**, the same story as prose, in the writer's own words.
 - \`*.rpy\`: **Code**, the Ren'Py version of a script, possibly hand-tuned. Only \`.rpy\` files next to a \`.intent\` of the same name belong to Intent.
+- \`*.mv.json\`: **MV**, for RPG Maker MV projects: the script's common events as JSON, one command per line, possibly hand-tuned. Keep \`events\`, \`switches\` and \`variables\` as they are; Intent uses those names to put the events back with the right ids.
 - \`characters/\`, \`places/\`, \`items/\`, \`minigames/\`, \`clues/\`: **sheets** (\`*.sheet\`), one per character, place, item, minigame or clue.
 - \`intent.json\`: project settings.
 - \`intent.sync.json\`: Intent's record of which versions are in step. **Never edit it.**
@@ -24,7 +25,7 @@ The format is described in [INTENT_SPEC.md](INTENT_SPEC.md). Read it before edit
 ## Rules
 
 - Never reword the writer's text unless asked. Dialogue and narration carry over word for word between Draft and Play.
-- Keep the three versions in step when you change one: Draft and Play, and Play and Code. Follow how each is already written.
+- Keep the versions in step when you change one: Draft and Play, Play and Code, and Play and MV. Follow how each is already written.
 - When unsure, leave a note line just above: \`// check: why\` in Play, \`# check: why\` in Code, \`[check: why]\` in Draft.
 - Use "gender", never "pronouns", on sheets.
 - After editing, tell the writer which files you changed. If you kept versions in step yourself, they can press **Mark as in step** in Intent's sync bar; otherwise they can use **✦ Update** there.

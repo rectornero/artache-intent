@@ -72,10 +72,11 @@ export function saveApiKey(key: string) {
   }
 }
 
-const SYSTEM = `You keep three versions of a game script in step for a writer:
+const SYSTEM = `You keep the versions of a game script in step for a writer:
 - Draft: the story as prose, in the writer's own words.
 - Play: the same story in Intent Script, the plain-text format described below.
 - Code: the Ren'Py code for it, as Intent generates it, possibly with the writer's own tweaks.
+- MV: the RPG Maker MV common events for it, as JSON ({"switches", "variables", "events", "commonEvents": [{"id", "name", "trigger", "switchId", "list": [{"code", "indent", "parameters"}]}]}), as Intent generates it, possibly with the writer's own tweaks.
 
 You get the version the writer changed, before and after, and the current text of the version to update. Apply to that version exactly the changes the edit calls for, written the way that version is written, and keep everything else in it unchanged, character for character, including anything the writer edited there by hand.
 
@@ -84,9 +85,10 @@ Rules:
 - Draft to Play: speech tags ("she says", "Edward agrees") name the speaker and are dropped; actions in tags stay as narration. Use the cast keys (ALL CAPS). Work out who "he", "she" or "they" is from each character's gender, nicknames and the story. Place changes add [BG Name] and the place's [MUSIC ...]; minigames add ">> MINIGAME: Name".
 - Play to Draft: write new script lines as prose in the style of the surrounding draft ("“Line,” Tony says."). Stage directions become short prose only when the draft already describes such things; otherwise leave them out.
 - Play to Code and back: follow how the existing code renders each kind of line.
+- Play to MV and back: follow how the existing events render each kind of line (101 face/name then 401 text lines, 102/402/404 choices, 111/411/412 conditions, 121/122 switches and variables, 117 calls). Keep the JSON valid, one command per line, and keep the ids, "switches", "variables" and "events" as they are unless a new one is needed.
 - If the version to update is empty, write it in full from the changed version.
 - Draft to Play: a {{ note }} in the Draft is a part the writer left for Claude to write later; put it in Play as a comment line "// write: note" and don't write the part.
-- Where you can't be sure, add a note line just above: "// check: why" in Play, "# check: why" in Code, "[check: why]" in Draft.
+- Where you can't be sure, add a note line just above: "// check: why" in Play, "# check: why" in Code, "[check: why]" in Draft; in MV, a comment command {"code":108,"indent":…,"parameters":["check: why"]}.
 
 Intent Script reference:
 
@@ -102,7 +104,7 @@ const FORMAT = {
   },
 };
 
-const NAMES = { draft: "Draft (prose)", play: "Play (Intent Script)", renpy: "Code (Ren'Py)" } as const;
+const NAMES = { draft: "Draft (prose)", play: "Play (Intent Script)", renpy: "Code (Ren'Py)", mv: "MV (RPG Maker MV events, JSON)" } as const;
 type Version = keyof typeof NAMES;
 
 function context(cfg: ProjectConfig, sheets: Sheet[]): string {
@@ -178,7 +180,7 @@ export function fenced(answer: string): string {
   return blocks.length ? blocks.sort((a, b) => b.length - a.length)[0] : answer.trim();
 }
 
-const NAMES_SHORT = { draft: "Draft", play: "Play", renpy: "Code" } as const;
+const NAMES_SHORT = { draft: "Draft", play: "Play", renpy: "Code", mv: "MV" } as const;
 
 export interface UpdateRequest {
   from: Version;

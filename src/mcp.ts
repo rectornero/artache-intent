@@ -12,11 +12,10 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { compileProject } from "./project.ts";
+import { compileProject, exportWithVersions } from "./project.ts";
 import { parseSheet, SHEET_KINDS } from "./core/sheets.ts";
 import { findAll, renameSheet, replaceAll, type Scope } from "./core/search.ts";
 import { inSync, markSynced, pairOf, pairState, SYNC_FILE, versionFile, type Version } from "./core/sync.ts";
-import { slug } from "./core/parser.ts";
 import { CHECKS_FILE, ISSUE_KINDS, mergeRun, readChecks, writeChecks } from "./core/checks.ts";
 
 declare const __INTENT_SPEC__: string | undefined;
@@ -30,7 +29,7 @@ if (!existsSync(join(root, "intent.json")) && !readdirSync(root).some((f) => f.e
 const SHEET_DIRS = Object.values(SHEET_KINDS).map((k) => k.folder);
 /** The files Intent owns; everything else in the folder is left alone. */
 const isIntentFile = (f: string) =>
-  /^[^/]+\.(intent|draft|rpy)$/.test(f) || /^([^/]+\/)?[^/]+\.sheet$/.test(f) || f === "intent.json" || f === SYNC_FILE || f === CHECKS_FILE;
+  /^[^/]+\.(intent|draft|rpy|mv\.json)$/.test(f) || /^([^/]+\/)?[^/]+\.sheet$/.test(f) || f === "intent.json" || f === SYNC_FILE || f === CHECKS_FILE;
 
 function load(): Record<string, string> {
   const files: Record<string, string> = {};
@@ -47,7 +46,7 @@ function safePath(file: string): string {
   const rel = file.replace(/\\/g, "/").replace(/^\.\//, "");
   const full = resolve(root, rel);
   if (!full.startsWith(root + sep) || relative(root, full).replace(/\\/g, "/") !== rel) throw new Error(`${file} is outside the project.`);
-  if (!isIntentFile(rel)) throw new Error(`${file} isn't an Intent file (.intent, .draft, .rpy, .sheet or intent.json).`);
+  if (!isIntentFile(rel)) throw new Error(`${file} isn't an Intent file (.intent, .draft, .rpy, .mv.json, .sheet or intent.json).`);
   return full;
 }
 
@@ -76,10 +75,11 @@ const problems = (files: Record<string, string>, only?: string) => {
 };
 
 const syncLine = (files: Record<string, string>, play: string) =>
-  (["draft", "renpy"] as Version[])
+  (["draft", "renpy", "mv"] as Version[])
+    .filter((v) => v !== "mv" || files[versionFile(play, "mv")] !== undefined)
     .map((v) => {
       const s = pairState(files, play, "play", v);
-      const name = v === "draft" ? "Draft" : "Code";
+      const name = { draft: "Draft", renpy: "Code", mv: "MV" }[v as "draft" | "renpy" | "mv"];
       if (s.missing) return `${name}: none yet`;
       if (inSync(s)) return `${name}: in step`;
       return `${name}: ${s.here && s.there ? "both edited" : s.here ? "behind Play" : "ahead of Play"}`;
@@ -93,7 +93,7 @@ const server = new McpServer(
   { name: "artache-intent", version: "0.3.1" },
   {
     instructions:
-      "Tools for an Artache Intent game script project. Each script has three versions: Play (.intent, Intent Script, the main one), Draft (.draft, prose) and Code (.rpy, Ren'Py). Start with intent_overview, and read intent_format once before writing Intent Script. Never reword the writer's text unless asked. After changing one version, keep its neighbours in step (Draft and Play, Play and Code), then call intent_mark_in_step; if you didn't, say so. Writing a script returns Intent's own problems for it: fix any you caused.",
+      "Tools for an Artache Intent game script project. Each script has up to four versions: Play (.intent, Intent Script, the main one), Draft (.draft, prose), Code (.rpy, Ren'Py) and, for RPG Maker MV projects, MV (.mv.json, the script's common events as JSON, one command per line). Start with intent_overview, and read intent_format once before writing Intent Script. Never reword the writer's text unless asked. After changing one version, keep its neighbours in step (Draft and Play, Play and Code, Play and MV), then call intent_mark_in_step; if you didn't, say so. Writing a script returns Intent's own problems for it: fix any you caused.",
   },
 );
 
@@ -122,7 +122,7 @@ server.registerTool("intent_format", { title: "Intent Script reference", descrip
 
 server.registerTool(
   "intent_read",
-  { title: "Read a file", description: "A script version or sheet, with line numbers unless plain is true. For a script's other versions use its .draft or .rpy name.", inputSchema: { file: z.string(), plain: z.boolean().optional() } },
+  { title: "Read a file", description: "A script version or sheet, with line numbers unless plain is true. For a script's other versions use its .draft, .rpy or .mv.json name.", inputSchema: { file: z.string(), plain: z.boolean().optional() } },
   async ({ file, plain }) => {
     const full = safePath(file);
     if (!existsSync(full)) throw new Error(`${file} doesn't exist.`);
@@ -176,13 +176,13 @@ server.registerTool(
 
 server.registerTool(
   "intent_mark_in_step",
-  { title: "Mark versions in step", description: "Tell Intent that a script's versions now match, after you updated them yourself.", inputSchema: { script: z.string().describe("The .intent file"), versions: z.array(z.enum(["draft", "renpy"])).describe("Which of Play's neighbours now match Play") } },
+  { title: "Mark versions in step", description: "Tell Intent that a script's versions now match, after you updated them yourself.", inputSchema: { script: z.string().describe("The .intent file"), versions: z.array(z.enum(["draft", "renpy", "mv"])).describe("Which of Play's neighbours now match Play") } },
   async ({ script, versions }) => {
     const files = load();
     if (files[script] === undefined) throw new Error(`${script} doesn't exist.`);
     let rec = files[SYNC_FILE];
     for (const v of versions as Version[]) {
-      if (files[versionFile(script, v)] === undefined) throw new Error(`${script} has no ${v === "draft" ? "Draft" : "Code"} version yet.`);
+      if (files[versionFile(script, v)] === undefined) throw new Error(`${script} has no ${{ draft: "Draft", renpy: "Code", mv: "MV" }[v as "draft" | "renpy" | "mv"]} version yet.`);
       rec = markSynced({ ...files, [SYNC_FILE]: rec }, script, pairOf("play", v)!, { play: files[script], [v]: files[versionFile(script, v)] });
     }
     save({ [SYNC_FILE]: rec ?? "{}" });
@@ -213,18 +213,13 @@ server.registerTool(
     const result = compile(files);
     const dir = resolve(root, out ?? "out");
     if (!dir.startsWith(root + sep)) throw new Error("The export folder must be inside the project.");
-    // Code versions kept in step with Play go out as they are.
-    for (const f of Object.keys(files).filter((n) => n.endsWith(".intent"))) {
-      const code = files[versionFile(f, "renpy")];
-      if (code !== undefined && inSync(pairState(files, f, "play", "renpy"))) {
-        result.files[`renpy/${slug(f.replace(/\.[^.]+$/, ""))}.rpy`] = code;
-      }
-    }
-    for (const [p, t] of Object.entries(result.files)) {
+    // Code and MV versions kept in step with Play go out as they are.
+    const written = exportWithVersions(result, files);
+    for (const [p, t] of Object.entries(written)) {
       mkdirSync(dirname(join(dir, p)), { recursive: true });
       writeFileSync(join(dir, p), t);
     }
-    return text(`${Object.keys(result.files).length} files in ${relative(root, dir) || "."}.\n${problems(files)}`);
+    return text(`${Object.keys(written).length} files in ${relative(root, dir) || "."}.\n${problems(files)}`);
   },
 );
 

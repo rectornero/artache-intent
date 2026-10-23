@@ -31,7 +31,7 @@ export const claudeIn = (files: Files, f: string) => claudeSpans(files[f] ?? "",
 export function useClaudeActions(c: {
   project: Project; file: string; isScript: boolean; ok: CompileResult | null; latest: MutableRefObject<Project[]>;
   setFiles: (id: string, files: Files | ((now: Files) => Files)) => void; say: Say; busy: string | null;
-  askClaude: <T>(job: Job<T>) => Promise<T>; bumpHistory: () => void; compiledCode: (play: string) => string;
+  askClaude: <T>(job: Job<T>) => Promise<T>; bumpHistory: () => void; compiledVersion: (v: "renpy" | "mv", play: string) => string;
 }) {
   const { project, file, ok, say } = c;
   const [writing, setWriting] = useState<Writing | null>(null);
@@ -47,8 +47,8 @@ export function useClaudeActions(c: {
     const after = project.files[vFile(from)] ?? "";
     const target = project.files[vFile(to)] ?? "";
     let proposed: string;
-    if (from === "play" && to === "renpy" && (base.renpy === undefined || base.renpy === target)) {
-      proposed = c.compiledCode(after); // Code nobody edited by hand: Intent writes it, no Claude needed.
+    if (from === "play" && (to === "renpy" || to === "mv") && (base[to] === undefined || base[to] === target)) {
+      proposed = c.compiledVersion(to, after); // Code or MV nobody edited by hand: Intent writes it, no Claude needed.
     } else {
       try {
         proposed = await c.askClaude(updateJob({ from, to, before: base[from] ?? "", after, target }, ok.config, sheets()));

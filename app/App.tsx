@@ -4,14 +4,15 @@ import { AUTHORS_FILE } from "../src/core/authors.ts";
 import { CHECKS_FILE, readChecks, writeChecks } from "../src/core/checks.ts";
 import { conditionText } from "../src/core/condition.ts";
 import { findGaps } from "../src/core/fill.ts";
-import { toLayer, type Layer } from "../src/core/layers.ts";
+import { toLayer } from "../src/core/layers.ts";
+import { mvVersionText } from "../src/core/mvVersion.ts";
 import { parseScript, slug } from "../src/core/parser.ts";
 import { assetsFromMv, assetsFromRenpy } from "../src/core/assets.ts";
 import { clueBoard } from "../src/core/mystery.ts";
 import { manuscript, manuscriptWords, type ManuscriptOptions } from "../src/core/manuscript.ts";
 import { detectMinigames, sheetFileName, sheetNames, sheetUsage, type SheetKind } from "../src/core/sheets.ts";
-import { inSync, markSynced, neighbours, pairOf, pairState, SYNC_FILE, versionFile, type Version } from "../src/core/sync.ts";
-import { compileProject, type CompileResult } from "../src/project.ts";
+import { inSync, markSynced, neighbours, pairOf, pairState, SYNC_FILE, versionFile, versionOf, type Version } from "../src/core/sync.ts";
+import { compileProject, exportWithVersions, type CompileResult } from "../src/project.ts";
 import { Editor, type Insertion } from "./Editor.tsx";
 import { Icon } from "./Icon.tsx";
 import { LinkMenu, type LinkMenuAt } from "./LinkMenu.tsx";
@@ -79,7 +80,7 @@ export function App() {
   const [rawSheet, setRawSheet] = useState(false);
   const [menu, setMenu] = useState<LinkMenuAt | null>(null);
   // Seamless layer tabs: the file seen as Draft, Play (the source) or Ren'Py.
-  const [layer, setLayer] = useState<Layer>("play");
+  const [layer, setLayer] = useState<Version>("play");
   const [historyVersion, setHistoryVersion] = useState(0);
   const bumpHistory = () => setHistoryVersion((v) => v + 1);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -125,28 +126,39 @@ export function App() {
   const update = (text: string) => setFiles(project.id, (now) => ({ ...now, [file]: text }));
 
   // Draft, Play and Code are separate texts. Play is the script file itself;
-  // a missing Draft or Code is made from Play for free the first time it's opened.
+  // a missing Draft, Code or MV is made from Play for free the first time it's opened.
+  // MV appears for projects that export to RPG Maker MV.
   const isScript = file.endsWith(".intent");
+  const versions: Version[] = ok?.config.targets.includes("mv") ? ["draft", "play", "renpy", "mv"] : ["draft", "play", "renpy"];
+  const shownLayer: Version = versions.includes(layer) ? layer : "play";
   const vFile = (v: Version) => versionFile(file, v);
-  const shown = isScript ? vFile(layer) : file;
-  const compiledCode = (src: string) => {
+  const shown = isScript ? vFile(shownLayer) : file;
+  // What Intent itself writes for Code or MV from this Play text.
+  const compiledVersion = (v: "renpy" | "mv", src: string) => {
     if (!ok) return "";
-    const one = compileProject(JSON.parse(project.files["intent.json"] || "{}"), { ...Object.fromEntries(Object.entries(project.files).filter(([n]) => n.endsWith(".sheet"))), [file]: src }, ["renpy"]);
+    const settings = JSON.parse(project.files["intent.json"] || "{}");
+    if (v === "mv") {
+      // The whole project, so ids match the export.
+      const all = Object.fromEntries(Object.entries(project.files).filter(([n]) => n.endsWith(".intent") || n.endsWith(".sheet")));
+      const r = compileProject(settings, { ...all, [file]: src }, ["mv"]);
+      return r.mv ? mvVersionText(r.mv, file) : "";
+    }
+    const one = compileProject(settings, { ...Object.fromEntries(Object.entries(project.files).filter(([n]) => n.endsWith(".sheet"))), [file]: src }, ["renpy"]);
     return one.files[`renpy/${slug(file.replace(/\.[^.]+$/, ""))}.rpy`] ?? "";
   };
   useEffect(() => {
-    if (!isScript || layer === "play" || !ok || project.files[vFile(layer)] !== undefined) return;
+    if (!isScript || layer === "play" || !ok || !versions.includes(layer) || project.files[vFile(layer)] !== undefined) return;
     const play = project.files[file] ?? "";
-    const text = layer === "draft" ? toLayer("draft", play, parseScript(play, ok.config, file), ok.config).text : compiledCode(play);
+    const text = layer === "draft" ? toLayer("draft", play, parseScript(play, ok.config, file), ok.config).text : compiledVersion(layer, play);
     const files = { ...project.files, [vFile(layer)]: text };
     files[SYNC_FILE] = markSynced(files, file, pairOf("play", layer)!, { play, [layer]: text });
     setFiles(project.id, files);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isScript, layer, file, ok]);
-  const states = isScript ? neighbours(layer).map((n) => ({ n, s: pairState(project.files, file, layer, n) })) : [];
+  const states = isScript ? neighbours(shownLayer).filter((n) => versions.includes(n)).map((n) => ({ n, s: pairState(project.files, file, shownLayer, n) })) : [];
   const behind = (v: Version) => isScript && neighbours(v).some((n) => { const st = pairState(project.files, file, v, n); return !st.missing && !inSync(st); });
 
-  const ai = useClaudeActions({ project, file, isScript, ok, latest, setFiles, say, busy, askClaude: claude.askClaude, bumpHistory, compiledCode });
+  const ai = useClaudeActions({ project, file, isScript, ok, latest, setFiles, say, busy, askClaude: claude.askClaude, bumpHistory, compiledVersion });
   const claudeShown = useMemo(() => (isScript && layer === "draft" ? claudeIn(project.files, vFile("draft")) : undefined),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [isScript, layer, file, project.files[vFile("draft")], project.files[AUTHORS_FILE]]);
@@ -155,7 +167,7 @@ export function App() {
     let files = { ...project.files };
     for (const { n, s } of states) {
       if (s.missing || inSync(s)) continue;
-      files = { ...files, [SYNC_FILE]: markSynced(files, file, pairOf(layer, n)!, { [layer]: files[vFile(layer)], [n]: files[vFile(n)] }) };
+      files = { ...files, [SYNC_FILE]: markSynced(files, file, pairOf(shownLayer, n)!, { [shownLayer]: files[vFile(shownLayer)], [n]: files[vFile(n)] }) };
     }
     setFiles(project.id, files);
     say("Marked as in step.");
@@ -222,8 +234,8 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   });
   const openAt = (f: string, line: number) => {
-    const v: Version | null = f.endsWith(".draft") ? "draft" : f.endsWith(".rpy") ? "renpy" : f.endsWith(".intent") ? "play" : null;
-    setFileName(v ? f.replace(/\.\w+$/, ".intent") : f);
+    const v = versionOf(f);
+    setFileName(v ? versionFile(f.replace(/\.(draft|rpy|mv\.json)$/, ".intent"), "play") : f);
     if (v) setLayer(v);
     if (f.endsWith(".sheet")) setRawSheet(true);
     jumpTo(line);
@@ -283,16 +295,8 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // What Export writes: Code you edited and kept in sync with Play goes out as it is.
-  const exportFiles = useMemo(() => {
-    if (!ok) return null;
-    const files = { ...ok.files };
-    for (const f of Object.keys(project.files).filter((n) => n.endsWith(".intent"))) {
-      const code = project.files[versionFile(f, "renpy")];
-      if (code !== undefined && inSync(pairState(project.files, f, "play", "renpy"))) files[`renpy/${slug(f.replace(/\.[^.]+$/, ""))}.rpy`] = code;
-    }
-    return files;
-  }, [ok, project.files]);
+  // What Export writes: Code and MV versions kept in step with Play go out as they are.
+  const exportFiles = useMemo(() => (ok ? exportWithVersions(ok, project.files) : null), [ok, project.files]);
   const assets = useMemo(() => {
     if (!exportFiles) return { renpy: [], mv: [] };
     const scriptOf = new Map(Object.keys(project.files).filter((n) => n.endsWith(".intent")).map((f) => [`renpy/${slug(f.replace(/\.[^.]+$/, ""))}.rpy`, f]));
@@ -472,17 +476,17 @@ export function App() {
         pop={pop} projectActions={projectActions}
       />
 
-      <main className={`main view-${isScript ? layer : "play"}`}>
+      <main className={`main view-${isScript ? shownLayer : "play"}`}>
         {file.endsWith(".sheet") && <SheetBar raw={rawSheet} setRaw={setRawSheet} />}
         {isScript && (
-          <LayerBar layer={layer} setLayer={setLayer} behind={behind} busy={!!busy} gaps={layer === "draft" ? findGaps(project.files[vFile("draft")] ?? "").length : 0}
+          <LayerBar versions={versions} layer={shownLayer} setLayer={setLayer} behind={behind} busy={!!busy} gaps={layer === "draft" ? findGaps(project.files[vFile("draft")] ?? "").length : 0}
             onInsert={insertBlock} onTogether={(stretch) => setTogether({ stretch, direction: together?.direction ?? "" })} onWriteGaps={() => void ai.writeGaps()} />
         )}
-        {isScript && layer !== "renpy" && prefs.showWriterBar !== false && ok && (
-          <WriterBar layer={layer} sheets={ok.sheets.map((x) => x.sheet)} blocks={ok.config.blocks} pop={pop}
+        {isScript && (shownLayer === "draft" || shownLayer === "play") && prefs.showWriterBar !== false && ok && (
+          <WriterBar layer={shownLayer} sheets={ok.sheets.map((x) => x.sheet)} blocks={ok.config.blocks} pop={pop}
             onInsert={(s) => setInsertion({ ...s, n: Date.now() })} onNewSheet={(k, n) => fx.createSheet(k, n, false)} />
         )}
-        {isScript && <SyncBar layer={layer} states={states} busy={!!busy} onMarkInStep={markInStep} onSync={(from, to) => void ai.syncVersions(from, to)} />}
+        {isScript && <SyncBar layer={shownLayer} states={states} busy={!!busy} onMarkInStep={markInStep} onSync={(from, to) => void ai.syncVersions(from, to)} />}
         {file.endsWith(".sheet") && !rawSheet ? (
           <div className="sheet-scroll">
             <SheetForm
@@ -499,14 +503,14 @@ export function App() {
           <Editor
             docKey={`${project.id}/${shown}`}
             value={project.files[shown] ?? ""}
-            isJson={file.endsWith(".json")}
+            isJson={shown.endsWith(".json")}
             wrap={prefs.wrap}
             diagnostics={shown === file ? diagnostics : []}
             onChange={(t) => edit(shown, t)}
             onCursorLine={setCursorLine}
             jumpTo={jump}
             insert={insertion}
-            spellcheck={isScript && layer !== "renpy" ? (prefs.spellcheck ?? "") : false}
+            spellcheck={isScript && (shownLayer === "draft" || shownLayer === "play") ? (prefs.spellcheck ?? "") : false}
             links={links}
             claude={claudeShown}
             onClaude={isScript && layer === "draft" ? ai.onClaudeSpans : undefined}

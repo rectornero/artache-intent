@@ -1,6 +1,6 @@
 import { deleteFile, renameScript, renameSheet, type ReplaceResult } from "../../src/core/search.ts";
 import { newSheet, sheetFileName, SHEET_HEAD, SHEET_KINDS, type SheetKind } from "../../src/core/sheets.ts";
-import { versionFile } from "../../src/core/sync.ts";
+import { versionFile, VERSIONS } from "../../src/core/sync.ts";
 import type { CompileResult } from "../../src/project.ts";
 import { saveSnapshot } from "../history.ts";
 import type { Project } from "../storage.ts";
@@ -62,8 +62,8 @@ export function useFileActions(c: {
   };
   const deleteAny = (f: string) => {
     const name = f.endsWith(".sheet") ? (sheetName(f) ?? f) : f;
-    if (!confirm(f.endsWith(".intent") ? `Delete ${name} with its Draft and Code versions?` : `Delete the sheet ${name}?`)) return;
-    const gone = Object.keys(project.files).filter((x) => x === f || (f.endsWith(".intent") && (x === versionFile(f, "draft") || x === versionFile(f, "renpy"))));
+    if (!confirm(f.endsWith(".intent") ? `Delete ${name} with its other versions?` : `Delete the sheet ${name}?`)) return;
+    const gone = Object.keys(project.files).filter((x) => x === f || (f.endsWith(".intent") && VERSIONS.some((v) => x === versionFile(f, v))));
     changeFiles(deleteFile(project.files, f), project.files, gone, "Before delete", `Deleted ${name}.`);
     if (c.sheetFile === f) c.setSheetFile(null);
   };

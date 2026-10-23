@@ -1,8 +1,7 @@
-import type { Layer } from "../src/core/layers.ts";
 import { inSync, type PairState, type Version } from "../src/core/sync.ts";
 import { STRETCHES, type Stretch } from "./claude.ts";
 
-export const VERSION_NAMES: Record<Version, string> = { draft: "Draft", play: "Play", renpy: "Code" };
+export const VERSION_NAMES: Record<Version, string> = { draft: "Draft", play: "Play", renpy: "Code", mv: "MV" };
 
 /** Above a sheet: edit it as a form or as text. */
 export function SheetBar({ raw, setRaw }: { raw: boolean; setRaw: (raw: boolean) => void }) {
@@ -16,14 +15,14 @@ export function SheetBar({ raw, setRaw }: { raw: boolean; setRaw: (raw: boolean)
 }
 
 /** Above a script: the three versions, and what each one can insert or ask Claude for. */
-export function LayerBar({ layer, setLayer, behind, busy, gaps, onInsert, onTogether, onWriteGaps, children }: {
-  layer: Layer; setLayer: (l: Layer) => void; behind: (l: Layer) => boolean; busy: boolean; gaps: number;
+export function LayerBar({ versions, layer, setLayer, behind, busy, gaps, onInsert, onTogether, onWriteGaps, children }: {
+  versions: Version[]; layer: Version; setLayer: (l: Version) => void; behind: (l: Version) => boolean; busy: boolean; gaps: number;
   onInsert: (kind: "draft" | "renpy" | "mv") => void; onTogether: (s: Stretch) => void; onWriteGaps: () => void; children?: React.ReactNode;
 }) {
   return (
     <div className="toolbar" role="toolbar" aria-label="Layers">
       <div className="layer-tabs" role="tablist" aria-label="Layer">
-        {(["draft", "play", "renpy"] as Layer[]).map((l) => (
+        {versions.map((l) => (
           <button key={l} role="tab" aria-selected={layer === l} className={layer === l ? "on" : ""} onClick={() => setLayer(l)} data-testid={`layer-${l}`}>
             {VERSION_NAMES[l]}
             {behind(l) && <i className="sync-dot" title="Out of sync" />}
