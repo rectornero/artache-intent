@@ -162,6 +162,8 @@ export interface UiPrefs {
   wrap: boolean;
   /** Draft: Claude's writing in its own colour. */
   showAuthors: boolean;
+  /** The writer's toolbar above Draft and Play. */
+  showWriterBar: boolean;
 }
 
 export const DEFAULT_PREFS: UiPrefs = {
@@ -172,6 +174,7 @@ export const DEFAULT_PREFS: UiPrefs = {
   showOutline: true,
   wrap: true,
   showAuthors: true,
+  showWriterBar: true,
 };
 
 export function activeTheme(p: UiPrefs): Theme {

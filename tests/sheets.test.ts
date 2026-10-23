@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { interactions, sheetSnippet } from "../src/core/insert.ts";
 import { clueBoard } from "../src/core/mystery.ts";
 import { detectMinigames, newSheet, parseSheet, serializeSheet, sheetFileName, sheetUsage } from "../src/core/sheets.ts";
 import { compileProject } from "../src/project.ts";
@@ -70,5 +71,23 @@ describe("mystery kit", () => {
       "Wet coat is a red herring, but its real meaning isn't written down.",
       "Wet coat is known by Mara, who has no character sheet.",
     ]);
+  });
+});
+
+describe("writer's toolbar", () => {
+  it("inserts a sheet the way each version writes it", () => {
+    const tony = parseSheet("@character Tony\nid: tony_v\n")!;
+    expect(sheetSnippet(tony, "play")).toEqual({ text: "TONY_V: ", block: true });
+    expect(sheetSnippet(tony, "draft")).toEqual({ text: "Tony", block: false });
+    expect(sheetSnippet(parseSheet("@place Stairwell\n")!, "play").text).toBe("[BG Stairwell]");
+    expect(sheetSnippet(parseSheet("@clue Wet coat\n")!, "play").text).toBe("+ evidence: wet_coat");
+    expect(sheetSnippet(parseSheet("@minigame Lockpick\n")!, "draft").text).toBe("the Lockpick minigame");
+  });
+
+  it("offers the project's own interaction blocks, but not drafts", () => {
+    const list = interactions({ INVESTIGATE: {}, CODES: {}, DRAFT: { export: false }, MINIGAME: {} });
+    expect(list.map((i) => i.label)).toEqual(["Choice", "Condition", "Talk", "Event", "Investigate", "Codes"]);
+    expect(list[4].text).toMatch(/^>> INVESTIGATE: /);
+    expect(list[5].text).toBe(">> CODES: header\n  - key: value");
   });
 });

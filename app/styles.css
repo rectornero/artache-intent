@@ -547,3 +547,10 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .clue-warnings { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
 .clue-warnings .link { text-align: left; background: none; border: 0; padding: 0; color: var(--text); text-decoration: none; cursor: pointer; }
 .clue-warnings .link:hover { text-decoration: underline; }
+
+/* Writer's toolbar: one row of insert buttons above the text, scrolling sideways on phones. */
+.writer-bar { display: flex; gap: 4px; padding: 6px 12px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; flex: none; }
+.writer-bar::-webkit-scrollbar { display: none; }
+.writer-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid transparent; background: none; color: var(--text); font-size: 13px; white-space: nowrap; cursor: pointer; }
+.writer-btn:hover { border-color: var(--border); background: var(--panel); }
+.writer-btn .icon-svg { color: var(--kind, var(--muted)); }

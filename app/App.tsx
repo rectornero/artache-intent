@@ -11,7 +11,7 @@ import { clueBoard } from "../src/core/mystery.ts";
 import { detectMinigames, sheetFileName, sheetNames, sheetUsage, type SheetKind } from "../src/core/sheets.ts";
 import { inSync, markSynced, neighbours, pairOf, pairState, SYNC_FILE, versionFile, type Version } from "../src/core/sync.ts";
 import { compileProject, type CompileResult } from "../src/project.ts";
-import { Editor } from "./Editor.tsx";
+import { Editor, type Insertion } from "./Editor.tsx";
 import { Icon } from "./Icon.tsx";
 import { LinkMenu, type LinkMenuAt } from "./LinkMenu.tsx";
 import { DiffReview, PopMenu, TogetherModal, type Pop, type PopItem, type Together } from "./Modals.tsx";
@@ -20,6 +20,7 @@ import { LayerBar, SheetBar, SyncBar, VERSION_NAMES } from "./ScriptBars.tsx";
 import { SheetForm } from "./SheetForm.tsx";
 import { SidePanel, type Tab } from "./SidePanel.tsx";
 import { Sidebar } from "./Sidebar.tsx";
+import { WriterBar } from "./WriterBar.tsx";
 import { deliverExport, whenSaveFails, isTauri, launchFile, launchProject, loadPrefs, openFiles, savePrefs, saveFileAs, type Project } from "./storage.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, type UiPrefs } from "./themes.ts";
 import type { LinkTarget } from "./intentMode.ts";
@@ -67,6 +68,7 @@ export function App() {
   const [tab, setTab] = useState<Tab>("play");
   const [jump, setJump] = useState<{ line: number; n: number } | null>(null);
   const jumpTo = (line: number) => setJump({ line, n: Date.now() });
+  const [insertion, setInsertion] = useState<Insertion | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobile, setMobile] = useState<MobileView>("write");
   const [sheetFile, setSheetFile] = useState<string | null>(null);
@@ -414,6 +416,10 @@ export function App() {
           <LayerBar layer={layer} setLayer={setLayer} behind={behind} busy={!!busy} gaps={layer === "draft" ? findGaps(project.files[vFile("draft")] ?? "").length : 0}
             onInsert={insertBlock} onTogether={(stretch) => setTogether({ stretch, direction: together?.direction ?? "" })} onWriteGaps={() => void ai.writeGaps()} />
         )}
+        {isScript && layer !== "renpy" && prefs.showWriterBar !== false && ok && (
+          <WriterBar layer={layer} sheets={ok.sheets.map((x) => x.sheet)} blocks={ok.config.blocks} pop={pop}
+            onInsert={(s) => setInsertion({ ...s, n: Date.now() })} onNewSheet={(k, n) => fx.createSheet(k, n, false)} />
+        )}
         {isScript && <SyncBar layer={layer} states={states} busy={!!busy} onMarkInStep={markInStep} onSync={(from, to) => void ai.syncVersions(from, to)} />}
         {file.endsWith(".sheet") && !rawSheet ? (
           <div className="sheet-scroll">
@@ -437,6 +443,7 @@ export function App() {
             onChange={(t) => setFile(shown, t)}
             onCursorLine={setCursorLine}
             jumpTo={jump}
+            insert={insertion}
             links={links}
             claude={claudeShown}
             onClaude={isScript && layer === "draft" ? ai.onClaudeSpans : undefined}

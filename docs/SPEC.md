@@ -202,6 +202,19 @@ expressions: neutral, nervous
   points to nobody, a red herring with no real meaning written down, a *known by* name
   with no character sheet, and a suspect with no alibi or no clue against them.
 
+## Writer's toolbar (0.4)
+
+A row of buttons above the Draft and Play: **Character, Place, Item, Clue, Minigame**,
+and in Play **Interaction**. Each lists that kind's sheets, plus *New…*, which makes the
+sheet and inserts it. In the Draft a sheet goes in as its name ("the Lockpick minigame"
+for a minigame). In Play it goes in the way Intent Script writes it, on its own line: a
+character starts a line they speak (`TONY: `), a place a `[BG Stairwell]`, a clue a
+`+ evidence: wet_coat`, a minigame a `>> MINIGAME: Lockpick`; an item goes in as its name.
+**Interaction** starts a choice, a condition, a `@talk`, an `@event`, or one of the
+project's own blocks from `intent.json` (`>> INVESTIGATE`, `>> MIND`, …) with a template
+to fill in. Everything inserted is an ordinary edit (Ctrl+Z takes it back). Settings →
+Writer's toolbar hides the row.
+
 ## Find, replace and rename (0.3)
 
 - **Find** (the search button, or Ctrl+Shift+F) searches every script's Draft, Play and Code and every sheet. Code is off by default, since Intent writes most of it. Options: match case, whole word.

@@ -54,6 +54,7 @@ export function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, set
           </label>
           <label>Show outline<input type="checkbox" checked={prefs.showOutline} onChange={(e) => setPrefs({ ...prefs, showOutline: e.target.checked })} /></label>
           <label title="In the Draft, text Claude wrote shows in Claude's colour until you edit it">Show who wrote what<input type="checkbox" checked={prefs.showAuthors !== false} onChange={(e) => setPrefs({ ...prefs, showAuthors: e.target.checked })} /></label>
+          <label title="Buttons above Draft and Play that insert characters, places, items, clues, minigames and interactions">Writer's toolbar<input type="checkbox" checked={prefs.showWriterBar !== false} onChange={(e) => setPrefs({ ...prefs, showWriterBar: e.target.checked })} /></label>
           <label>Wrap long lines<input type="checkbox" checked={prefs.wrap} onChange={(e) => setPrefs({ ...prefs, wrap: e.target.checked })} /></label>
         </div>
         <h3>Claude</h3>
