@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { CLAUDE_MODELS, type ClaudeModel, type ClaudeVia } from "./claude.ts";
 import { THEMES, type Theme, type UiPrefs } from "./themes.ts";
+import { forgetRenpySdk, isPhone, isTauri } from "./storage.ts";
 
 const SPELL_LANGS = [["en-GB", "English (UK)"], ["en-US", "English (US)"], ["it", "Italian"], ["es", "Spanish"], ["fr", "French"], ["de", "German"], ["pt", "Portuguese"]];
 
 export function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, setModel, via, setVia, onClose }: { prefs: UiPrefs; setPrefs: (p: UiPrefs) => void; theme: Theme; apiKey: string; setApiKey: (k: string) => void; model: ClaudeModel; setModel: (m: ClaudeModel) => void; via: ClaudeVia; setVia: (v: ClaudeVia) => void; onClose: () => void }) {
   const [keyDraft, setKeyDraft] = useState("");
+  const [sdkForgotten, setSdkForgotten] = useState(false);
   const custom: Theme = prefs.custom ?? { ...structuredClone(theme), id: "custom", label: "Custom" };
   const setCustom = (t: Theme) => setPrefs({ ...prefs, custom: t, themeId: "custom" });
   return (
@@ -67,6 +69,15 @@ export function Settings({ prefs, setPrefs, theme, apiKey, setApiKey, model, set
           </label>
           <label>Wrap long lines<input type="checkbox" checked={prefs.wrap} onChange={(e) => setPrefs({ ...prefs, wrap: e.target.checked })} /></label>
         </div>
+        {isTauri() && !isPhone() && (
+          <>
+            <h3>Playtest</h3>
+            <div className="row">
+              <span className="muted">▶ Playtest writes the Ren'Py export into your game's game/ folder and starts the Ren'Py SDK on it. It asks for the SDK's renpy.exe the first time.</span>
+              <button onClick={() => { forgetRenpySdk(); setSdkForgotten(true); }} disabled={sdkForgotten}>{sdkForgotten ? "It will ask next time" : "Choose renpy.exe again"}</button>
+            </div>
+          </>
+        )}
         <h3>Claude</h3>
         <div className="claude-key">
           <p className="muted">Claude keeps Draft, Play and Code in step (✦ Update), checks your story, and drafts image and song prompts. Choose how Intent asks it:</p>

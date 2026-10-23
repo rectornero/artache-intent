@@ -24,7 +24,7 @@ import { Sidebar } from "./Sidebar.tsx";
 import { WriterBar } from "./WriterBar.tsx";
 import { GoalsModal, useTodayWords, WordBar } from "./WordBar.tsx";
 import { countWords, playWords, projectWords, readGoals, writeGoals } from "../src/core/words.ts";
-import { deliverExport, whenSaveFails, isTauri, saveBinaryAs, launchFile, launchProject, loadPrefs, openFiles, savePrefs, saveFileAs, type Project } from "./storage.ts";
+import { deliverExport, whenSaveFails, isPhone, isTauri, playtestRenpy, saveBinaryAs, launchFile, launchProject, loadPrefs, openFiles, savePrefs, saveFileAs, type Project } from "./storage.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, type UiPrefs } from "./themes.ts";
 import type { LinkTarget } from "./intentMode.ts";
 import { useBackups } from "./hooks/useBackups.ts";
@@ -302,6 +302,17 @@ export function App() {
     };
   }, [exportFiles, project.files]);
 
+  const playtest = async () => {
+    if (!ok || !exportFiles) return say("Fix intent.json first");
+    if (errors) say(`${errors} error${errors > 1 ? "s" : ""} in the scripts: Ren'Py may stop on them.`, 6000);
+    try {
+      if ((await playtestRenpy(project.id, exportFiles)) === "started") say("Ren'Py is starting your game. The scripts are in its game/ folder.", 8000);
+    } catch (e) {
+      say(`Couldn't start Ren'Py: ${e instanceof Error ? e.message : String(e)}`, 10000);
+    }
+  };
+  const canPlaytest = isTauri() && !isPhone();
+
   const doExport = async () => {
     if (!ok || !exportFiles) return say("Fix intent.json first");
     await deliverExport(project.name, exportFiles);
@@ -436,6 +447,7 @@ export function App() {
         <button className="icon" onClick={openSearch} aria-label="Find in project" title="Find in project (Ctrl+Shift+F)" data-testid="open-search">
           <Icon name="search" size={17} />
         </button>
+        {canPlaytest && <button className="wide-only playtest" onClick={() => void playtest()} title="Write the Ren'Py export into your game and run it in Ren'Py" data-testid="playtest">▶ Playtest</button>}
         <button className="primary wide-only" onClick={doExport} data-testid="export">Export</button>
         <button className="icon wide-only" onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings">⚙</button>
         <div className="more phone-only">

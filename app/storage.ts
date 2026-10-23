@@ -289,6 +289,49 @@ export function pickFolderFiles(): Promise<Map<string, File> | null> {
   });
 }
 
+/** Android and other phones: the app runs, but some desktop things (Ren'Py) can't. */
+export const isPhone = () => typeof navigator !== "undefined" && /Android|iPhone|iPad/i.test(navigator.userAgent);
+
+const SDK_KEY = "intent.renpySdk";
+/**
+ * Playtest in Ren'Py (Windows app): write the Ren'Py export into the linked game's game/
+ * folder, then start the Ren'Py SDK on it. Asks once for each folder and remembers it.
+ */
+export async function playtestRenpy(project: string, files: Record<string, string>): Promise<"started" | "cancelled"> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const fs = await import("@tauri-apps/plugin-fs");
+  const { invoke } = await import("@tauri-apps/api/core");
+  let root = gameFolderOf(project);
+  if (!root) {
+    root = await pickFolder("Your Ren'Py game's folder (the one with game/ inside)");
+    if (!root) return "cancelled";
+    setGameFolder(project, root);
+  }
+  root = root.replace(/[\\/]+$/, "");
+  // The linked folder can be the game itself or its game/ folder.
+  const gameDir = /[\\/]game$/i.test(root) ? root : `${root}/game`;
+  const base = gameDir.replace(/[\\/]game$/i, "");
+  let sdk = safeGet(SDK_KEY);
+  if (!sdk || !(await fs.exists(sdk).catch(() => false))) {
+    const picked = await open({ title: "Find renpy.exe in your Ren'Py SDK folder", filters: [{ name: "Ren'Py", extensions: ["exe", "sh", "app"] }] });
+    if (typeof picked !== "string") return "cancelled";
+    sdk = picked;
+    safeSet(SDK_KEY, sdk);
+  }
+  await fs.mkdir(gameDir, { recursive: true });
+  for (const [path, text] of Object.entries(files)) {
+    if (!path.startsWith("renpy/") || path.endsWith(".md")) continue;
+    const full = `${gameDir}/${path.slice("renpy/".length)}`;
+    await fs.mkdir(full.slice(0, full.lastIndexOf("/")), { recursive: true });
+    await fs.writeTextFile(full, text);
+  }
+  await invoke("playtest", { renpy: sdk, project: base });
+  return "started";
+}
+
+/** Forget the Ren'Py SDK, so the next playtest asks for it again. */
+export const forgetRenpySdk = () => safeSet(SDK_KEY, "");
+
 const GAME_KEY = "intent.gameFolders";
 /** The game folder linked to each project, on this device only (paths differ between devices). */
 export function gameFolderOf(project: string): string | null {

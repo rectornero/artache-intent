@@ -569,3 +569,6 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .manuscript { display: flex; flex-direction: column; gap: 12px; }
 .manuscript .row { display: flex; gap: 8px; }
 .manuscript .row button { padding: 7px 16px; border-radius: 999px; border: 1px solid var(--border); }
+
+/* ▶ Playtest in Ren'Py (Windows app) */
+.topbar .playtest { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); font-weight: 600; }
