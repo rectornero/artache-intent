@@ -15,11 +15,11 @@ export function SheetBar({ raw, setRaw }: { raw: boolean; setRaw: (raw: boolean)
 }
 
 /** Above a script: the three versions, and what each one can insert or ask Claude for. */
-export function LayerBar({ versions, layer, setLayer, behind, busy, open, onInsert, onTogether, onUnfold, children }: {
+export function LayerBar({ versions, layer, setLayer, behind, busy, open, onInsert, onTogether, onUnfold, onOpinion, children }: {
   versions: Version[]; layer: Version; setLayer: (l: Version) => void; behind: (l: Version) => boolean; busy: boolean;
   /** Draft: Fast and Medium passages and requests still to unfold. */
   open: number;
-  onInsert: (kind: "draft" | "renpy" | "mv") => void; onTogether: (s: Stretch) => void; onUnfold: () => void; children?: React.ReactNode;
+  onInsert: (kind: "draft" | "renpy" | "mv") => void; onTogether: (s: Stretch) => void; onUnfold: () => void; onOpinion: () => void; children?: React.ReactNode;
 }) {
   return (
     <div className="toolbar" role="toolbar" aria-label="Layers">
@@ -39,8 +39,12 @@ export function LayerBar({ versions, layer, setLayer, behind, busy, open, onInse
           <option value="mv">MV code block</option>
         </select>
       )}
-      {layer === "draft" && (
+      {(layer === "draft" || layer === "play") && (
         <div className="draft-tools">
+          <button className="claude-go opinion-btn" disabled={busy} data-testid="opinion"
+            title="Claude's honest opinion on a part of your script: what works, what doesn't yet, and how to fix it. Your text doesn't change."
+            onClick={onOpinion}>✦ Opinion</button>
+          {layer === "draft" && <>
           <select className="insert-menu together-menu" value="" aria-label="Write together" disabled={busy} data-testid="together-menu"
             onChange={(e) => { const k = e.target.value as Stretch; e.target.value = ""; if (k) onTogether(k); }}>
             <option value="">✦ Write together</option>
@@ -49,6 +53,7 @@ export function LayerBar({ versions, layer, setLayer, behind, busy, open, onInse
           <button className="claude-go unfold" disabled={busy} data-testid="unfold"
             title="Claude writes out your keywords and sketches in your style, keeps what you finished, and carries out your requests. You review it first."
             onClick={onUnfold}>✦ Unfold{open > 0 && <i className="unfold-count">{open}</i>}</button>
+          </>}
         </div>
       )}
       {children}
