@@ -21,6 +21,8 @@ import { SheetForm } from "./SheetForm.tsx";
 import { SidePanel, type Tab } from "./SidePanel.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { WriterBar } from "./WriterBar.tsx";
+import { GoalsModal, useTodayWords, WordBar } from "./WordBar.tsx";
+import { countWords, playWords, projectWords, readGoals, writeGoals } from "../src/core/words.ts";
 import { deliverExport, whenSaveFails, isTauri, launchFile, launchProject, loadPrefs, openFiles, savePrefs, saveFileAs, type Project } from "./storage.ts";
 import { activeTheme, applyTheme, DEFAULT_PREFS, type UiPrefs } from "./themes.ts";
 import type { LinkTarget } from "./intentMode.ts";
@@ -82,6 +84,7 @@ export function App() {
   const [connectOpen, setConnectOpen] = useState(false);
   const [popMenu, setPopMenu] = useState<Pop | null>(null);
   const [together, setTogether] = useState<Together | null>(null);
+  const [goalsOpen, setGoalsOpen] = useState(false);
   const pop = (e: React.MouseEvent, items: PopItem[]) => {
     e.stopPropagation();
     const r = e.currentTarget.getBoundingClientRect();
@@ -252,6 +255,15 @@ export function App() {
       ...script.blocks.map((b) => ({ line: b.line, label: `@${b.kind} ${b.name}`, depth: 0 })),
     ].sort((a, b) => a.line - b.line);
   }, [script]);
+
+  const totalWords = useMemo(() => (ok ? projectWords(project.files, ok.scripts) : null), [ok, project.files]);
+  const hereWords = !isScript ? null : layer === "draft" ? countWords(project.files[vFile("draft")] ?? "") : layer === "play" && script ? playWords(script) : null;
+  const goals = readGoals(project.files["intent.json"]);
+  const today = useTodayWords(project.id);
+  const edit = (name: string, text: string) => {
+    if (/\.(draft|intent)$/.test(name)) today.add(countWords(text) - countWords(project.files[name] ?? ""));
+    setFile(name, text);
+  };
 
   const insertBlock = (kind: "draft" | "renpy" | "mv") => {
     const lines = (project.files[file] ?? "").split("\n");
@@ -440,7 +452,7 @@ export function App() {
             isJson={file.endsWith(".json")}
             wrap={prefs.wrap}
             diagnostics={shown === file ? diagnostics : []}
-            onChange={(t) => setFile(shown, t)}
+            onChange={(t) => edit(shown, t)}
             onCursorLine={setCursorLine}
             jumpTo={jump}
             insert={insertion}
@@ -450,6 +462,10 @@ export function App() {
             onOpenLink={openLink}
             onContext={setMenu}
           />
+        )}
+        {prefs.showWordCount !== false && (
+          <WordBar projectId={project.id} here={hereWords} hereLabel={layer === "draft" ? "Draft" : "Play"} total={totalWords} written={today.written} goals={goals}
+            onGoals={() => setGoalsOpen(true)} onReached={(m) => say(m, 6000)} />
         )}
         {diagnostics.filter((d) => d.level !== "info").length > 0 && (
           <div className="problems">
@@ -496,6 +512,10 @@ export function App() {
           note={`Green lines are added to ${VERSION_NAMES[ai.reviewing.to]}, red lines are removed. Nothing changes until you accept; the old text goes to History.`}
           footer={ai.reviewing.before === ai.reviewing.after && <p className="muted">No changes needed: the two are already in step.</p>}
           onClose={() => ai.setReviewing(null)} onAccept={() => ai.acceptUpdate(ai.reviewing!)} />
+      )}
+      {goalsOpen && (
+        <GoalsModal goals={goals} onClose={() => setGoalsOpen(false)}
+          onSave={(g) => { setGoalsOpen(false); try { setFile("intent.json", writeGoals(project.files["intent.json"], g)); } catch { say("Fix the project settings first: they aren't valid JSON."); } }} />
       )}
       {connectOpen && (
         <ConnectClaude folder={project.folder} hasKey={!!claude.apiKey}

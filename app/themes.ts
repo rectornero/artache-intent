@@ -164,6 +164,8 @@ export interface UiPrefs {
   showAuthors: boolean;
   /** The writer's toolbar above Draft and Play. */
   showWriterBar: boolean;
+  /** Word count and goals under the text. */
+  showWordCount: boolean;
 }
 
 export const DEFAULT_PREFS: UiPrefs = {
@@ -175,6 +177,7 @@ export const DEFAULT_PREFS: UiPrefs = {
   wrap: true,
   showAuthors: true,
   showWriterBar: true,
+  showWordCount: true,
 };
 
 export function activeTheme(p: UiPrefs): Theme {
