@@ -85,3 +85,32 @@ describe("✦ Unfold", () => {
     expect(r.written.map((w) => r.text.slice(w.from, w.to))).toEqual(["Rain hammers the door.", "They argue, and Limo wins."]);
   });
 });
+
+import { withTags } from "../src/core/levels.ts";
+
+describe("Unpolished", () => {
+  it("is a level of its own, tagged with % and kept as it is by ✦ Unfold", () => {
+    expect(taggedLevel("% she hesitates, maybe too long")).toBe("unpolished");
+    expect(taggedLevel("100% sure")).toBe("written");
+    const text = `% she looks away, sad?\n\\ they argue`;
+    const plan = planUnfold(text);
+    expect(plan.units.map((u) => u.note)).toEqual(["\\ they argue"]);
+    expect(plan.open).toBe(1);
+    expect(plan.marked).toBe(`<unpolished>% she looks away, sad?</unpolished>\n<part n="1">\\ they argue</part>`);
+  });
+});
+
+describe("withTags", () => {
+  it("writes each chosen level as its tag, so a saved Draft keeps them", () => {
+    const text = "Tony opens the door.\nrain, cold\nshe looks away\n\nask: make it colder\nThe end.";
+    const choices = [
+      { from: 21, to: 31, level: "intent" as const },
+      { from: 32, to: 46, level: "unpolished" as const },
+      { from: 48, to: 67, level: "request" as const },
+    ];
+    expect(withTags(text, choices)).toBe("Tony opens the door.\n\\ rain, cold\n% she looks away\n\n/ ask: make it colder\nThe end.");
+  });
+  it("doesn't tag a line twice", () => {
+    expect(withTags("\\ rain", [{ from: 0, to: 6, level: "intent" }])).toBe("\\ rain");
+  });
+});

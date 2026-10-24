@@ -222,6 +222,7 @@ export const claudeUpdate = (apiKey: string, model: ClaudeModel, req: UpdateRequ
 const UNFOLD_SYSTEM = `You help a game writer turn their Draft into its final form. They practise intent writing: each part is written at the level of detail it deserves, and requests to you sit in the same text as the story. The writer marks every part themselves.
 
 - <part n="…">: keywords or a sketch of what happens, marked by the writer as intent. Write it out as finished prose (and dialogue, when it calls for it). A leading "\\" is the writer's tag for intent: drop it.
+- <unpolished>: the writer's own words, not finished yet: they will polish them later themselves (a leading "%" is their tag). Never change them and never write them out. Read them as the writer's notes: what they mean to happen, the tone, a reminder to themselves. Let them guide the parts you write.
 - Text outside the tags is the writer's finished text (and headings, comments): never change it. Read it to match their style and to know what happens around each part.
 - <request n="…">: an ask for you, not story, in full sentences or as bare keywords alike (a leading "/" or "»" is the writer's tag). Follow it while you write the parts. When it asks for something outside the story text (a minigame, character, place, item or clue), draft that as a sheet. Answer each request in one or two sentences.
 - Also give one writing tip: a short, friendly craft lesson drawn from what you just did with THIS text (for example how a keyword became a concrete image, or why a line of dialogue now carries the subtext). One or two sentences, quoting the writer's own words. Write it in the language of the writer's text. Never lecture or judge.
@@ -482,6 +483,8 @@ Give:
 - strengths: what works and why (voice, dialogue, pacing, tension, character, imagery, structure). Each with a short exact quote from the part (a few words) it shows in, or "" when it's about the whole.
 - weaknesses: what doesn't work yet and why, most important first. Each with a short exact quote, or "".
 - fixes: concrete changes the writer could make, most useful first. Each with a short exact quote of what to change, the fix (a rewrite of those words when that's the clearest way, or a short instruction), and why it helps.
+
+In a Draft, a line may start with the writer's tag: "\\" intent (keywords or a sketch, still to be written out), "%" unpolished (their own words, to finish later) or "/" a request to an assistant (not story). Judge intent and unpolished lines as plans and rough text, not as finished prose, and leave requests out of your judgement.
 
 Be specific: name the line, the beat, the word. No generic advice, no flattery, no grammar nitpicks unless they hurt the reading. Judge only the part you're given; the rest of the script and the sheets are background. Respect the writer's style and intent: suggest, don't take over. If the writer asks about something in particular, answer that first. Keep each point to one or two sentences. Write in English.`;
 

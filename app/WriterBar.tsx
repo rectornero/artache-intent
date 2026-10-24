@@ -50,10 +50,13 @@ export function WriterBar({ layer, sheets, blocks, pop, onInsert, onFormat, onNe
       )}
       {layer === "draft" && (
         <div className="format-group" role="group" aria-label="Mark lines">
-          <button className="writer-btn k-intent" onMouseDown={keep} onClick={() => onInsert({ text: "\\ ", block: true })} title="Intent: keywords or a sketch after it, and ✦ Unfold writes it out. You can also tap a line's edge." data-testid="insert-intent">
+          <button className="writer-btn k-intent" onMouseDown={keep} onClick={() => onInsert({ text: "\\ ", block: true, level: "intent" })} title="Intent: keywords or a sketch, and ✦ Unfold writes it out. Marks the lines you're on, or starts a new one. You can also type \\ at the start of a line or tap its edge." data-testid="insert-intent">
             <span className="tag-glyph">{"\\"}</span><span>Intent</span>
           </button>
-          <button className="writer-btn k-request" onMouseDown={keep} onClick={() => onInsert({ text: "/ ", block: true })} title="A request for Claude: ✦ Unfold carries it out, and it never goes in the story" data-testid="insert-request">
+          <button className="writer-btn k-unpolished" onMouseDown={keep} onClick={() => onInsert({ text: "% ", block: true, level: "unpolished" })} title="Unpolished: your own words, to finish later. Kept as they are, and Claude reads them as notes. Marks the lines you're on, or starts a new one. You can also type % at the start of a line." data-testid="insert-unpolished">
+            <span className="tag-glyph">%</span><span>Unpolished</span>
+          </button>
+          <button className="writer-btn k-request" onMouseDown={keep} onClick={() => onInsert({ text: "/ ", block: true, level: "request" })} title="A request for Claude: ✦ Unfold carries it out, and it never goes in the story. Marks the lines you're on, or starts a new one. You can also type / at the start of a line." data-testid="insert-request">
             <span className="tag-glyph">/</span><span>Request</span>
           </button>
         </div>

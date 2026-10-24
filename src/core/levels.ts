@@ -1,14 +1,15 @@
 // Intent writing: a Draft written at whatever detail each moment deserves.
 // Every line is finished text (Written) unless the writer marks it: Intent (keywords
-// or a sketch, for Claude to write out) or Request (an ask for Claude). The writer marks
-// a line on its edge, with the toolbar, or by starting it with "\\ " (intent) or "/ "
-// (request). Nothing is guessed. A choice follows its line and is kept in
+// or a sketch, for Claude to write out), Unpolished (the writer's own words, to finish
+// later) or Request (an ask for Claude). The writer marks a line on its edge, with the
+// toolbar, or by starting it with "\\ " (intent), "% " (unpolished) or "/ " (request). Nothing is guessed. A choice follows its line and is kept in
 // intent.levels.json with the line's place and text.
 
-export type Level = "intent" | "written" | "request";
+export type Level = "intent" | "unpolished" | "written" | "request";
 
 export const LEVELS: Record<Level, { label: string; hint: string }> = {
   intent: { label: "Intent", hint: "Keywords or a sketch: ✦ Unfold writes it out" },
+  unpolished: { label: "Unpolished", hint: "Your own words, to finish later: kept as they are, and Claude reads them as notes" },
   written: { label: "Written", hint: "Finished text: kept word for word" },
   request: { label: "Request", hint: "An ask for Claude, never part of the story" },
 };
@@ -56,6 +57,10 @@ const DIVIDER = /^\s*([—–-]{1,3}|\*{3,}|_{3,})\s*$/;
 // The writer's own tags at the start of a line: "\\ " intent, "/ " or "»" a request ("//" is a comment).
 const REQUEST_TAG = /^(\/(?!\/)|»)/;
 const INTENT_TAG = /^\\/;
+const UNPOLISHED_TAG = /^%(?=\s|$)/;
+
+/** The tag a line starts with to mark its level ("" for Written). */
+export const LEVEL_TAGS: Record<Level, string> = { intent: "\\ ", unpolished: "% ", written: "", request: "/ " };
 
 /**
  * A line's level from the writer's own tag, else Written. Nothing is guessed: a line
@@ -65,6 +70,7 @@ export function taggedLevel(line: string): Level {
   const t = line.trim();
   if (REQUEST_TAG.test(t)) return "request";
   if (INTENT_TAG.test(t)) return "intent";
+  if (UNPOLISHED_TAG.test(t)) return "unpolished";
   return "written";
 }
 
@@ -165,5 +171,23 @@ export function storyOnly(text: string, choices: Choice[] = []): string {
   return text.split("\n").filter((_, i, all) => {
     const from = all.slice(0, i).reduce((n, l) => n + l.length + 1, 0);
     return !asks.some((p) => from >= p.from && from <= p.to);
+  }).join("\n");
+}
+
+/**
+ * The Draft with every line's level written as its tag ("\\ ", "% ", "/ "), so a saved
+ * .draft keeps what is Intent, Unpolished and Request when it is opened again or read elsewhere.
+ */
+export function withTags(text: string, choices: Choice[] = []): string {
+  const marked = new Map<number, Level>();
+  for (const p of passages(text, choices)) if (p.chosen) for (const at of lineStarts(text, p.from, p.to + 1)) marked.set(at, p.level);
+  let at = 0;
+  return text.split("\n").map((line) => {
+    const from = at;
+    at += line.length + 1;
+    const level = marked.get(from);
+    if (!level || level === "written" || taggedLevel(line) === level) return line;
+    const indent = line.match(/^\s*/)![0];
+    return indent + LEVEL_TAGS[level] + line.slice(indent.length);
   }).join("\n");
 }

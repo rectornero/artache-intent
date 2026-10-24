@@ -3,11 +3,14 @@
 
 import { castKeyOf, type Sheet, type SheetKind } from "./sheets.ts";
 import { slug } from "./parser.ts";
+import type { Level } from "./levels.ts";
 
 export interface Snippet {
   text: string;
   /** Goes on lines of its own instead of at the cursor. */
   block: boolean;
+  /** Marks the lines at the cursor with this level instead, when they have text. */
+  level?: Level;
 }
 
 /** A sheet's name dropped into the Draft or Play. */

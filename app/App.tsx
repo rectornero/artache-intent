@@ -4,7 +4,7 @@ import { AUTHORS_FILE } from "../src/core/authors.ts";
 import { CHECKS_FILE, readChecks, writeChecks } from "../src/core/checks.ts";
 import { conditionText } from "../src/core/condition.ts";
 import { retireNotes } from "../src/core/fill.ts";
-import { choicesIn, choose, LEVELS, LEVELS_FILE, passages, readLevels, storyOnly, taggedLevel, toWrite, writeLevels, type Choice, type Level } from "../src/core/levels.ts";
+import { choicesIn, choose, LEVELS, LEVELS_FILE, passages, readLevels, storyOnly, taggedLevel, toWrite, withTags, writeLevels, type Choice, type Level } from "../src/core/levels.ts";
 import { saveSnapshot } from "./history.ts";
 import { toLayer } from "../src/core/layers.ts";
 import { mvVersionText } from "../src/core/mvVersion.ts";
@@ -12,7 +12,7 @@ import { parseScript, slug } from "../src/core/parser.ts";
 import { assetsFromMv, assetsFromRenpy } from "../src/core/assets.ts";
 import { clueBoard } from "../src/core/mystery.ts";
 import { manuscript, manuscriptWords, type ManuscriptOptions } from "../src/core/manuscript.ts";
-import { sheetNames, sheetUsage, type SheetKind } from "../src/core/sheets.ts";
+import { sheetFileName, sheetNames, sheetUsage, type SheetKind } from "../src/core/sheets.ts";
 import { inSync, markSynced, neighbours, pairOf, pairState, SYNC_FILE, versionFile, versionOf, type Version } from "../src/core/sync.ts";
 import { compileProject, exportWithVersions, type CompileResult } from "../src/project.ts";
 import { Editor, type Insertion } from "./Editor.tsx";
@@ -89,7 +89,8 @@ export function App() {
   const [rawSheet, setRawSheet] = useState(false);
   const [menu, setMenu] = useState<LinkMenuAt | null>(null);
   // Seamless layer tabs: the file seen as Draft, Play (the source) or Ren'Py.
-  const [layer, setLayer] = useState<Version>("play");
+  // Scripts open on the Draft: it's where the writing happens.
+  const [layer, setLayer] = useState<Version>("draft");
   const [historyVersion, setHistoryVersion] = useState(0);
   const bumpHistory = () => setHistoryVersion((v) => v + 1);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -97,6 +98,8 @@ export function App() {
   const [popMenu, setPopMenu] = useState<Pop | null>(null);
   const [together, setTogether] = useState<Together | null>(null);
   const [opinion, setOpinion] = useState<OpinionState | null>(null);
+  // A name clicked in the text: its sheet in a popup, in front of everything.
+  const [sheetPop, setSheetPop] = useState<string | null>(null);
   const [selection, setSelection] = useState("");
   const [goalsOpen, setGoalsOpen] = useState(false);
   const pop = (e: React.MouseEvent, items: PopItem[]) => {
@@ -198,6 +201,7 @@ export function App() {
     setPopMenu({ x: at.x, y: at.y, items: [
       item("written", `${LEVELS.written.label}: keep it as it is`),
       item("intent", `${LEVELS.intent.label}: Claude writes it out`),
+      item("unpolished", `${LEVELS.unpolished.label}: yours, to finish later`),
       item("request", `${LEVELS.request.label}: an ask for Claude`),
     ] });
   };
@@ -258,7 +262,10 @@ export function App() {
     const entry = ok?.sheets.find((x) => x.file === f);
     return entry && ok ? sheetUsage(entry.sheet, ok.scripts) : null;
   };
-  const openLink = (t: LinkTarget) => (t.stub ? fx.createSheet(t.kind as SheetKind, t.name) : openSheet(t.file));
+  const openLink = (t: LinkTarget) => {
+    if (t.stub) fx.createSheet(t.kind as SheetKind, t.name, false);
+    setSheetPop(t.stub ? sheetFileName(t.kind as SheetKind, t.name) : t.file);
+  };
 
   // Bigger steps at bigger sizes, so 72px is a few taps away.
   const textSize = (by: number) => setPrefs((p) => {
@@ -318,7 +325,8 @@ export function App() {
   // ✦ Opinion: Claude reads a part of the version on screen. Nothing in the text changes.
   const askOpinion = async (o: OpinionState) => {
     if (!ok || !isScript) return;
-    const whole = project.files[shown] ?? "";
+    // The Draft with its marks as tags, so Claude knows what is Intent, Unpolished or a Request.
+    const whole = shownLayer === "draft" ? withTags(draftText, draftChoices) : project.files[shown] ?? "";
     const part = opinionPart(whole, o.scope, cursorLine, selection);
     if (!part.text.trim()) return say("There's nothing to read there yet.");
     const name = { selection: "the selected text", scene: "this scene", chapter: "this chapter", script: `the whole of ${file}` }[part.scope];
@@ -358,7 +366,17 @@ export function App() {
     return [...items].reverse().find((i) => i.line <= cursorLine) ?? items[0] ?? null;
   }, [script, cursorLine]);
 
+  // The outline follows the version on screen: the Draft's own # chapters and ## scenes there.
+  const draftOutline = useMemo(() => {
+    if (!isScript || shownLayer !== "draft") return null;
+    return (project.files[vFile("draft")] ?? "").split("\n").flatMap((l, i) => {
+      const m = l.match(/^(#{1,2})\s+(.*\S)/);
+      return m ? [{ line: i + 1, label: m[2].replace(/[*_`]/g, ""), depth: m[1].length - 1 }] : [];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScript, shownLayer, project.files[vFile("draft")]]);
   const outline = useMemo(() => {
+    if (draftOutline) return draftOutline;
     if (!script) return [];
     return [
       ...script.chapters.flatMap((c) => [
@@ -367,7 +385,7 @@ export function App() {
       ]),
       ...script.blocks.map((b) => ({ line: b.line, label: `@${b.kind} ${b.name}`, depth: 0 })),
     ].sort((a, b) => a.line - b.line);
-  }, [script]);
+  }, [script, draftOutline]);
 
   const totalWords = useMemo(() => (ok ? projectWords(project.files, ok.scripts) : null), [ok, project.files]);
   const hereWords = !isScript ? null : layer === "draft" ? countWords(project.files[vFile("draft")] ?? "") : layer === "play" && script ? playWords(script) : null;
@@ -473,7 +491,8 @@ export function App() {
         ...(isScript ? versions.map(vFile) : file.endsWith(".json") ? [] : [file]).flatMap((f) => {
           const name = f.split("/").pop();
           const v = isScript ? versionOf(f) : null;
-          const text = () => project.files[f] ?? (v === "renpy" || v === "mv" ? compiledVersion(v, project.files[file] ?? "") : "");
+          // A saved Draft keeps its marks as tags (\\ intent, % unpolished, / request), so nothing is lost.
+          const text = () => (v === "draft" ? withTags(draftText, draftChoices) : project.files[f] ?? (v === "renpy" || v === "mv" ? compiledVersion(v, project.files[file] ?? "") : ""));
           if (project.files[f] === undefined && !(ok && (v === "renpy" || v === "mv"))) return [];
           return [{ label: v ? `${VERSION_NAMES[v]} as… (${name})` : `This file as… (${name})`, run: () => void saveFileAs(f, text()).then((done) => done && say(`Saved ${name}`)) }];
         }),
@@ -613,7 +632,8 @@ export function App() {
           <WriterBar layer={shownLayer} sheets={ok.sheets.map((x) => x.sheet)} blocks={ok.config.blocks} pop={pop}
             onInsert={(s) => setInsertion({ ...s, n: Date.now() })} onFormat={(kind) => setFormatCmd({ kind, n: Date.now() })} onNewSheet={(k, n) => fx.createSheet(k, n, false)} />
         )}
-        {isScript && <SyncBar layer={shownLayer} states={states} busy={!!busy} onMarkInStep={markInStep} onSync={(from, to) => void ai.syncVersions(from, to)} />}
+        {/* In the Draft, Play being behind is only the dot on its tab: Play offers the update. */}
+        {isScript && shownLayer !== "draft" && <SyncBar layer={shownLayer} states={states} busy={!!busy} onMarkInStep={markInStep} onSync={(from, to) => void ai.syncVersions(from, to)} />}
         {file.endsWith(".sheet") && !rawSheet ? (
           <div className="sheet-scroll">
             <SheetForm
@@ -687,6 +707,26 @@ export function App() {
       {menu && (
         <LinkMenu menu={menu} onClose={() => setMenu(null)} onOpenSheet={openSheet} onRename={fx.renameAny} onChangeKind={fx.changeKind} onCreate={fx.createSheet}
           onPlainText={(text, quiet) => { fx.setNoLink(text, true); if (!quiet) say(`“${text}” is plain text now. Undo in Project settings (noLink).`); }} />
+      )}
+      {sheetPop && project.files[sheetPop] !== undefined && (
+        <div className="modal-back" onClick={() => setSheetPop(null)} onKeyDown={(e) => e.key === "Escape" && setSheetPop(null)}>
+          <div className="modal sheet-pop" role="dialog" aria-label="Sheet" onClick={(e) => e.stopPropagation()} data-testid="sheet-pop">
+            <SheetForm
+              key={sheetPop}
+              text={project.files[sheetPop]}
+              usage={sheetUsageFor(sheetPop)}
+              onChange={(t) => setFile(sheetPop, t)}
+              onJump={(f, line) => { setSheetPop(null); setFileName(f); jumpTo(line); setMobile("write"); }}
+              onClose={() => setSheetPop(null)}
+              onDraftPrompt={ai.draftPrompt}
+              onRename={(n) => { const done = fx.renameSheetTo(sheetPop, n); if (done) setSheetPop(null); return done; }}
+            />
+            <div className="modal-actions">
+              <button onClick={() => { const f = sheetPop; setSheetPop(null); openSheet(f); }}>Keep it open beside the text</button>
+              <button className="primary" onClick={() => setSheetPop(null)}>Done</button>
+            </div>
+          </div>
+        </div>
       )}
       {opinion && (
         <OpinionModal value={opinion} hasSelection={!!selection.trim()} onChange={setOpinion} onClose={() => setOpinion(null)}
