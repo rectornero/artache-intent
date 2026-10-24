@@ -1,6 +1,7 @@
 // ✦ Unfold: the Draft at every level of detail, turned into its final form.
 // Intent passages are written out by Claude; Written text stays word for word
-// (Claude reads it as context); Requests are carried out and stay the writer's.
+// (Claude reads it as context), and so does Unpolished text (Claude reads it as the
+// writer's notes); Requests are carried out and stay the writer's.
 
 import { fillGapsAt, type Gap } from "./fill.ts";
 import { passages, toWrite, type Level, type Passage } from "./levels.ts";
@@ -27,6 +28,8 @@ export function planUnfold(text: string, ps: Passage[] = passages(text)): Unfold
   const marks = [
     ...units.map((u, i) => ({ from: u.from, to: u.to, put: `<part n="${i + 1}">${esc(u.note)}</part>` })),
     ...asks.map((p, i) => ({ from: p.from, to: p.to, put: `<request n="${i + 1}">${esc(text.slice(p.from, p.to))}</request>` })),
+    // The writer's unpolished words stay theirs: Claude reads them as notes.
+    ...ps.filter((p) => p.level === "unpolished").map((p) => ({ from: p.from, to: p.to, put: `<unpolished>${esc(text.slice(p.from, p.to))}</unpolished>` })),
   ].sort((a, b) => a.from - b.from);
   let marked = "";
   let at = 0;

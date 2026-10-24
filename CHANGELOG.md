@@ -2,6 +2,32 @@
 
 Artache Intent Writer, the writing program of the Artache Intent suite.
 
+## 0.7.0 "Marginalia" (2026-10-24)
+
+**Unpolished**, a new mark for Draft lines: your own words, written now and finished later.
+- Mark it with `% ` at the start of a line, the **% Unpolished** button or a line's edge.
+  It shows on a very light grey wash that follows your theme.
+- ✦ Unfold keeps it word for word and reads it as your notes: what you mean, the tone, a reminder.
+  ✦ Opinion reads it as rough text, not finished prose.
+
+**Writing**
+- Scripts open on the **Draft**, and the Outline follows the Draft's own `#` chapters and `##` scenes.
+- In the Draft, the "Play doesn't have your changes yet" banner is gone: the dot on Play's tab
+  still tells you, and Play offers the update.
+- Names with a sheet are **bold, in their colour** (characters in dark red) again, with no
+  highlighter. **Clicking a name opens its sheet in a popup**, in front of the text; "Keep it open
+  beside the text" moves it to the side.
+- The Intent, Unpolished and Request buttons mark the line you're on (or every selected line)
+  instead of starting a new one; pressed again, they take the mark off. On an empty line they
+  still start one.
+- **Draft as…** saves the marks as tags (`\ ` intent, `% ` unpolished, `/ ` request), so a saved
+  Draft keeps them.
+
+**Fixes**
+- Three clicks select a line without its line break, so typing or a mark stays on that line.
+- A name followed by 's, 'll, 'd, 're or 've (Miriam's) stays highlighted.
+- The 0.6.2 update changed the version of one of the app's building blocks by mistake; it's back.
+
 ## 0.6.2 "Vellum" (2026-10-23)
 
 - **✦ Opinion**, beside ✦ Unfold in the Draft and in Play: Claude's honest read of a part of

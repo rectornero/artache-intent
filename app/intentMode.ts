@@ -124,7 +124,8 @@ export function sheetLinks(get: () => LinkTarget[], open: (t: LinkTarget) => voi
     if (!targets.length) return b.finish();
     const byName = new Map(targets.map((t) => [t.name.toLowerCase(), t]));
     const esc = [...byName.keys()].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    const re = new RegExp(`(?<![\\w'’])(${esc.join("|")})(?![\\w'’])`, "gi");
+    // A name followed by 's, 'd, 'll… (Miriam's, Tony'll) still counts; one inside a longer word doesn't.
+    const re = new RegExp(`(?<![\\w'’])(${esc.join("|")})(?=['’](?:s|d|ll|re|ve)\\b|[^\\w'’]|['’](?!\\w)|$)`, "gi");
     for (const { from, to } of view.visibleRanges) {
       const text = view.state.doc.sliceString(from, to);
       for (const m of text.matchAll(re)) {
@@ -150,15 +151,17 @@ export function sheetLinks(get: () => LinkTarget[], open: (t: LinkTarget) => voi
     },
     { decorations: (v) => v.decorations },
   );
-  // A plain click (or tap) on a name opens its sheet beside the text; the
-  // cursor still lands there, and double-click or drag selects as usual.
+  // A plain click (or tap) on a name opens its sheet; the cursor still lands there. It waits a
+  // moment, so a double or triple click selects as usual and opens nothing.
+  let pending: ReturnType<typeof setTimeout> | undefined;
   const click = EditorView.domEventHandlers({
     click(e, view) {
+      clearTimeout(pending);
       if (e.button !== 0 || e.detail > 1 || e.shiftKey || !view.state.selection.main.empty) return false;
       const el = (e.target as HTMLElement).closest("[data-sheet]");
       const t = el && get().find((x) => x.name.toLowerCase() === el.getAttribute("data-sheet"));
       if (!t) return false;
-      open(t);
+      pending = setTimeout(() => { if (view.state.selection.main.empty) open(t); }, 280);
       return false;
     },
   });
@@ -205,7 +208,7 @@ class LevelMark extends GutterMarker {
   }
 }
 
-const TAGS: Record<string, Level> = { "\\": "intent", "/": "request" };
+const TAGS: Record<string, Level> = { "\\": "intent", "%": "unpolished", "/": "request" };
 
 /**
  * Intent writing in the Draft: each line's level, from the writer's tag or choice
@@ -251,7 +254,7 @@ export function intentLevels(onPick: (at: { lineFrom: number; level: Level; chos
     if (text !== " " || from !== to) return false;
     const line = view.state.doc.lineAt(from);
     const before = view.state.sliceDoc(line.from, from);
-    const m = before.match(/^(\s*)(\\|\/)$/);
+    const m = before.match(/^(\s*)(\\|\/|%)$/);
     if (!m) return false;
     const level = TAGS[m[2]];
     const tagAt = line.from + m[1].length;

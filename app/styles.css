@@ -223,15 +223,16 @@ pre.code.wrap { white-space: pre-wrap; }
 .k-minigame { --kind: var(--accent); }
 .kind-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: var(--kind, var(--border)); vertical-align: 1px; flex: none; }
 
-.editor .cm-sheet-link { --kind: var(--speaker); cursor: pointer; border-radius: 4px; padding: 0 1px; margin: 0 -1px;
-  background: color-mix(in srgb, var(--kind) 13%, transparent); box-shadow: inset 0 -1.5px 0 color-mix(in srgb, var(--kind) 75%, transparent);
-  transition: background .12s ease; }
-.editor .cm-sheet-link:hover { background: color-mix(in srgb, var(--kind) 26%, transparent); }
+/* Names with a sheet: bold, in their kind's colour (characters in the speaker's dark red), no
+   highlighter. Under the pointer they underline, to say a click opens the sheet. */
+.editor .cm-sheet-link { --kind: var(--speaker); cursor: pointer; color: var(--kind); font-weight: 700;
+  text-decoration: underline transparent; text-decoration-thickness: 1.5px; text-underline-offset: 3px; transition: text-decoration-color .12s ease; }
+.editor .cm-sheet-link:hover { text-decoration-color: color-mix(in srgb, var(--kind) 70%, transparent); }
 .editor .cm-sheet-character { --kind: var(--speaker); }
 .editor .cm-sheet-place { --kind: var(--stage); }
 .editor .cm-sheet-item { --kind: var(--block); }
 .editor .cm-sheet-minigame { --kind: var(--accent); }
-.editor .cm-sheet-stub { --kind: var(--accent); background: transparent; box-shadow: none; text-decoration: underline dashed color-mix(in srgb, var(--accent) 70%, transparent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+.editor .cm-sheet-stub { --kind: var(--accent); color: inherit; font-weight: inherit; text-decoration: underline dashed color-mix(in srgb, var(--accent) 70%, transparent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
 .editor .cm-sheet-stub:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 
 .sheet-group { margin-bottom: 4px; }
@@ -516,6 +517,8 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 /* {{ note }}: a Draft part left for Claude to write */
 /* Intent writing: intent reads softer, requests sit on a band, finished text is plain. The edge is tapped to correct a line. */
 .app:not(.no-levels) .editor .cm-lv-intent { font-style: italic; color: color-mix(in srgb, var(--text) 62%, var(--bg)); }
+/* Unpolished: a very light wash of the text colour, so it fits every theme, light or dark. */
+.app:not(.no-levels) .editor .cm-lv-unpolished { background: color-mix(in srgb, var(--text) 6%, transparent); }
 .app:not(.no-levels) .editor .cm-lv-request { background: color-mix(in srgb, var(--accent) 13%, transparent); box-shadow: inset 3px 0 0 var(--accent); color: color-mix(in srgb, var(--accent) 55%, var(--text)); font-weight: 500; }
 .app:not(.no-levels) .editor .cm-lv-request.done { background: color-mix(in srgb, var(--accent) 5%, transparent); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 35%, transparent); color: var(--muted); font-weight: 400; }
 .app:not(.no-levels) .editor .cm-lv-request.done::after { content: "✓ carried out"; margin-left: 10px; font-size: .78em; font-style: normal; color: var(--muted); }
@@ -527,6 +530,7 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .cm-level-mark.lv-intent { background: color-mix(in srgb, var(--text) 35%, var(--bg)); }
 .cm-level-mark.lv-written { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
 .cm-level-mark.lv-request { background: var(--accent); }
+.cm-level-mark.lv-unpolished { background: color-mix(in srgb, var(--text) 18%, var(--bg)); }
 .app.no-levels .editor .cm-levels { display: none; }
 .writer-btn .tag-glyph { font-weight: 700; width: 15px; text-align: center; color: var(--accent); }
 .toolbar button.claude-go .unfold-count { font-style: normal; background: color-mix(in srgb, var(--accent-text) 22%, transparent); border-radius: 999px; padding: 0 7px; font-size: 12px; }
@@ -537,7 +541,6 @@ select.add-sheet:hover { background: var(--panel2); color: var(--text); }
 .writing-tip b { color: var(--accent); margin-right: 6px; }
 
 /* Who wrote what: the writer in the ink colour, Claude in a softened accent. Names stay bold so they read in both. */
-.editor .cm-sheet-link { font-weight: 600; }
 .app:not(.no-authors) .editor .cm-by-claude, .app:not(.no-authors) .editor .cm-by-claude span:not(.cm-sheet-link) { color: color-mix(in srgb, var(--accent) 72%, var(--text)); }
 .draft-tools { order: 99; margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .draft-tools .insert-menu, .draft-tools .claude-go { margin-left: 0; order: 0; }
@@ -696,3 +699,7 @@ body.resizing .editor, body.resizing .panel { pointer-events: none; }
 .opinion-list.fixes h3::before { background: var(--accent); }
 .opinion-quote { font-style: italic; color: var(--accent); text-align: left; padding: 0; background: none; border: 0; cursor: pointer; }
 .opinion-fix { margin: 2px 0; }
+
+/* A name's sheet in a popup: wide enough for the form, scrolls inside. */
+.modal.sheet-pop { width: min(560px, 100%); padding: 16px 18px; }
+.modal.sheet-pop .sheet { padding: 0; }

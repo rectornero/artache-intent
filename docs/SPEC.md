@@ -146,12 +146,15 @@ guessed: every line is Written unless the writer marks it.
 |---|---|---|---|
 | **Written** | the writer's text | nothing: every line is Written | kept word for word; Claude reads it for style and context |
 | **Intent** | keywords (`museum, cats, peaceful sky`) or a sketch (`they argue, then Limo wins`) | start the line with `\ `, tap its edge, or the toolbar's **\ Intent** | written out as prose in the style around it |
+| **Unpolished** (0.7) | the writer's own words, to finish later | start the line with `% `, tap its edge, or **% Unpolished** | kept word for word; Claude reads it as the writer's notes |
 | **Request** | an ask for Claude (`/ make it colder`) | start the line with `/ ` or `»` (a `» … »` request can run over lines), tap its edge, or **/ Request** | carried out, never put in the story; a minigame, character, place, item or clue it asks for becomes a new sheet |
 
-Intent shows each marked line in the text (Intent in a softer italic, Requests on a band in
-the accent colour) and as a thin edge left of the line; any line's edge appears under the
-pointer. A tap on the edge opens **Written**, **Intent** or **Request**. Typing `\ ` or `/ ` at
-the start of a line does the same, and the tag goes. The writer's choices follow their line
+Intent shows each marked line in the text (Intent in a softer italic, Unpolished on a very
+light grey wash, Requests on a band in the accent colour) and as a thin edge left of the line; any line's edge appears under the
+pointer. A tap on the edge opens **Written**, **Intent**, **Unpolished** or **Request**. Typing `\ `,
+`% ` or `/ ` at the start of a line does the same, and the tag goes. The toolbar buttons mark
+the line at the cursor (or every selected line), and take the mark off when pressed again.
+Save → **Draft as…** writes each mark back as its tag, so a saved `.draft` keeps them. The writer's choices follow their line
 through edits and are kept in `intent.levels.json` with the line's text, so they are found
 again after edits outside Intent. Headings, comments and dividers carry no level.
 Settings → Show intent and requests hides it all.

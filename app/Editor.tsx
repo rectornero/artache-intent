@@ -1,15 +1,30 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { forceLinting } from "@codemirror/lint";
-import { Compartment, EditorState, Transaction } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, highlightActiveLine, keymap, lineNumbers, scrollPastEnd } from "@codemirror/view";
 import { applyFormat, formatting, type Format } from "./format.ts";
 import { json } from "./jsonMode.ts";
 import { useEffect, useRef } from "react";
 import type { Diagnostic } from "../src/core/ast.ts";
 import { choicesField, claudeSpansField, intentLanguage, intentLevels, setChoices, setClaudeSpans, intentLinter, layerStripes, refreshLinks, sheetLinks, type LinkTarget } from "./intentMode.ts";
-import type { Choice, Level } from "../src/core/levels.ts";
+import { taggedLevel, type Choice, type Level } from "../src/core/levels.ts";
 
-export type Insertion = { text: string; block?: boolean; n: number };
+/** Text to put in at the cursor; with `level`, the selected lines that have text get that level instead. */
+export type Insertion = { text: string; block?: boolean; level?: Level; n: number };
+
+// Three clicks select a line without its line break, so what you type, or a mark from the
+// toolbar, stays on that line instead of reaching into the next one.
+const lineWithoutBreak = EditorState.transactionFilter.of((tr) => {
+  if (!tr.selection || !tr.isUserEvent("select.pointer")) return tr;
+  const doc = tr.newDoc;
+  let trimmed = false;
+  const ranges = tr.selection.ranges.map((r) => {
+    if (r.empty || r.to === doc.length || doc.lineAt(r.to).from !== r.to || doc.lineAt(r.from).from !== r.from) return r;
+    trimmed = true;
+    return r.anchor < r.head ? EditorSelection.range(r.from, r.to - 1) : EditorSelection.range(r.to - 1, r.from);
+  });
+  return trimmed ? [tr, { selection: EditorSelection.create(ranges, tr.selection.mainIndex), sequential: true }] : tr;
+});
 
 interface Props {
   docKey: string;
@@ -85,6 +100,7 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
           typeComp.current.of(centre(typewriter)),
           history(),
           highlightActiveLine(),
+          lineWithoutBreak,
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           isJson ? json() : [intentLanguage(withFormat), layerStripes(), withLevels ? [choicesField, intentLevels((at) => pickRef.current?.(at))] : [], claudeSpansField, intentLinter(() => diags.current), sheetLinks(() => linkRef.current, (t) => openRef.current?.(t))],
           withFormat ? formatting() : [],
@@ -202,6 +218,24 @@ export function Editor({ docKey, value, isJson, wrap, diagnostics, onChange, onC
     if (!v || !insert || insert.n === inserted.current) return;
     inserted.current = insert.n;
     const sel = v.state.selection.main;
+    // A level from the toolbar marks the lines you're on (or have selected) that have text;
+    // pressed again on lines already at that level, it takes the mark off.
+    const cs = insert.level ? v.state.field(choicesField, false) : undefined;
+    if (cs && insert.level) {
+      const doc = v.state.doc;
+      const end = sel.to > sel.from && doc.lineAt(sel.to).from === sel.to ? sel.to - 1 : sel.to;
+      const lines: { from: number; to: number; text: string }[] = [];
+      for (let n = doc.lineAt(sel.from).number; n <= doc.lineAt(end).number; n++) if (doc.line(n).text.trim()) lines.push(doc.line(n));
+      if (lines.length) {
+        const levelOf = (l: { from: number; text: string }) => cs.find((c) => c.from === l.from)?.level ?? taggedLevel(l.text);
+        const off = lines.every((l) => levelOf(l) === insert.level);
+        const rest = cs.filter((c) => !lines.some((l) => l.from === c.from));
+        const next = off ? rest : [...rest, ...lines.map((l) => ({ from: l.from, to: l.to, level: insert.level }))].sort((a, b) => a.from - b.from);
+        v.dispatch({ effects: setChoices.of(next), userEvent: "input" });
+        v.focus();
+        return;
+      }
+    }
     let from = sel.from, to = sel.to, text = insert.text;
     if (insert.block) {
       // On an empty line, fill it; otherwise start a new line after the cursor's line.
